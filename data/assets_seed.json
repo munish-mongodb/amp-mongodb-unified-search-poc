@@ -1,0 +1,182 @@
+[
+  {
+    "_id": "VIN_RIVIAN_001",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1T", "color": "Rivian Blue", "vin": "1FTFW1E81MF100001", "firmwareVersion": "v2026.12.4", "batteryCapacityKw": 135 },
+    "unstructuredNotes": "DC fast charger cut out at 80% state of charge in San Jose station. High heat warning.",
+    "segmentAssignments": [ { "segmentId": "seg_san_jose_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_san_jose_team"] } ],
+    "authorizedRolesOrTeams": ["team_san_jose", "region_california_north"],
+    "updatedAt": "2026-08-01T10:00:00Z"
+  },
+  {
+    "_id": "VIN_RIVIAN_002",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1S", "color": "Forest Green", "vin": "1FTFW1E81MF100002", "firmwareVersion": "v2026.12.4", "batteryCapacityKw": 135 },
+    "unstructuredNotes": "Air suspension fault detected during highway cruising near Hayward.",
+    "segmentAssignments": [ { "segmentId": "seg_hayward_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_hayward_team"] } ],
+    "authorizedRolesOrTeams": ["team_hayward", "region_california_north"],
+    "updatedAt": "2026-08-02T10:00:00Z"
+  },
+  {
+    "_id": "VIN_RIVIAN_003",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1T", "color": "Rivian Blue", "vin": "1FTFW1E81MF100003", "firmwareVersion": "v2026.12.4", "batteryCapacityKw": 135 },
+    "unstructuredNotes": "Vehicle reported intermittent DC fast charging throttling under high ambient temperatures in Hayward depot.",
+    "segmentAssignments": [ { "segmentId": "seg_hayward_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_hayward_team"] } ],
+    "authorizedRolesOrTeams": ["team_hayward", "region_california_north"],
+    "updatedAt": "2026-08-03T10:00:00Z"
+  },
+  {
+    "_id": "VIN_RIVIAN_004",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1S", "color": "Rivian Blue", "vin": "1FTFW1E81MF100004", "firmwareVersion": "v2026.11.2", "batteryCapacityKw": 149 },
+    "unstructuredNotes": "Battery pack management system reduces charge rate when cell temperatures exceed safe thresholds during supercharging sessions.",
+    "segmentAssignments": [ { "segmentId": "seg_austin_team", "ancestorSegments": ["seg_global", "seg_texas", "seg_austin_team"] } ],
+    "authorizedRolesOrTeams": ["team_austin", "region_texas"],
+    "updatedAt": "2026-08-04T10:00:00Z"
+  },
+  {
+    "_id": "VIN_RIVIAN_005",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1T", "color": "Forest Green", "vin": "1FTFW1E81MF100005", "firmwareVersion": "v2026.12.4", "batteryCapacityKw": 135 },
+    "unstructuredNotes": "Infotainment touchscreen freezes intermittently after software update.",
+    "segmentAssignments": [ { "segmentId": "seg_san_jose_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_san_jose_team"] } ],
+    "authorizedRolesOrTeams": ["team_san_jose", "region_california_north"],
+    "updatedAt": "2026-08-05T10:00:00Z"
+  },
+  {
+    "_id": "CHARGER_EV_101",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "ev_charger",
+    "attributes": { "maxKw": 350, "connectorType": "CCS1", "firmware": "v4.2.1" },
+    "unstructuredNotes": "Cable cooling fan failure reported by telemetry. Connector overheats under sustained 350kW load.",
+    "segmentAssignments": [ { "segmentId": "seg_san_jose_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_san_jose_team"] } ],
+    "authorizedRolesOrTeams": ["team_san_jose", "region_california_north"],
+    "updatedAt": "2026-08-06T10:00:00Z"
+  },
+  {
+    "_id": "CHARGER_EV_102",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "ev_charger",
+    "attributes": { "maxKw": 150, "connectorType": "CCS1", "firmware": "v4.1.0" },
+    "unstructuredNotes": "Payment terminal card reader unresponsive; unit offline for 2 hours.",
+    "segmentAssignments": [ { "segmentId": "seg_hayward_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_hayward_team"] } ],
+    "authorizedRolesOrTeams": ["team_hayward", "region_california_north"],
+    "updatedAt": "2026-08-07T10:00:00Z"
+  },
+  {
+    "_id": "CHARGER_EV_103",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "ev_charger",
+    "attributes": { "maxKw": 350, "connectorType": "NACS", "firmware": "v4.2.1" },
+    "unstructuredNotes": "Thermal derating triggered on DC fast charger during peak summer demand, reducing max output from 350kW to 150kW.",
+    "segmentAssignments": [ { "segmentId": "seg_austin_team", "ancestorSegments": ["seg_global", "seg_texas", "seg_austin_team"] } ],
+    "authorizedRolesOrTeams": ["team_austin", "region_texas"],
+    "updatedAt": "2026-08-08T10:00:00Z"
+  },
+  {
+    "_id": "EBIKE_001",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "e_bike",
+    "attributes": { "make": "Rivian", "model": "e-Bike Commuter", "batteryWattHours": 500 },
+    "unstructuredNotes": "Rear derailleur misaligned after firmware update, shifting is inconsistent.",
+    "segmentAssignments": [ { "segmentId": "seg_san_jose_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_san_jose_team"] } ],
+    "authorizedRolesOrTeams": ["team_san_jose", "region_california_north"],
+    "updatedAt": "2026-08-09T10:00:00Z"
+  },
+  {
+    "_id": "EBIKE_002",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "e_bike",
+    "attributes": { "make": "Rivian", "model": "e-Bike Commuter", "batteryWattHours": 500 },
+    "unstructuredNotes": "Battery pack shows reduced range and warm-to-touch casing after rapid charge cycles in hot weather.",
+    "segmentAssignments": [ { "segmentId": "seg_hayward_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_hayward_team"] } ],
+    "authorizedRolesOrTeams": ["team_hayward", "region_california_north"],
+    "updatedAt": "2026-08-10T10:00:00Z"
+  },
+  {
+    "_id": "VIN_RIVIAN_006",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1T", "color": "Rivian Blue", "vin": "1FTFW1E81MF100006", "firmwareVersion": "v2026.12.4", "batteryCapacityKw": 135 },
+    "unstructuredNotes": "Tire pressure monitoring system reports slow leak in rear left tire.",
+    "segmentAssignments": [ { "segmentId": "seg_hayward_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_hayward_team"] } ],
+    "authorizedRolesOrTeams": ["team_hayward", "region_california_north"],
+    "updatedAt": "2026-08-11T10:00:00Z"
+  },
+  {
+    "_id": "VIN_RIVIAN_007",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1S", "color": "Rivian Blue", "vin": "1FTFW1E81MF100007", "firmwareVersion": "v2026.12.4", "batteryCapacityKw": 149 },
+    "unstructuredNotes": "Owner reports charging speed drops significantly on hot days when using public fast chargers.",
+    "segmentAssignments": [ { "segmentId": "seg_california_north", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north"] } ],
+    "authorizedRolesOrTeams": ["region_california_north"],
+    "updatedAt": "2026-08-12T10:00:00Z"
+  },
+  {
+    "_id": "CHARGER_EV_104",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "ev_charger",
+    "attributes": { "maxKw": 150, "connectorType": "CCS1", "firmware": "v4.2.1" },
+    "unstructuredNotes": "Firmware v4.2.1 rolled out fleet-wide; no reported issues.",
+    "segmentAssignments": [ { "segmentId": "seg_austin_team", "ancestorSegments": ["seg_global", "seg_texas", "seg_austin_team"] } ],
+    "authorizedRolesOrTeams": ["team_austin", "region_texas"],
+    "updatedAt": "2026-08-13T10:00:00Z"
+  },
+  {
+    "_id": "VIN_RIVIAN_008",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1T", "color": "Silver", "vin": "1FTFW1E81MF100008", "firmwareVersion": "v2026.12.4", "batteryCapacityKw": 135 },
+    "unstructuredNotes": "Windshield wiper motor makes grinding noise in cold weather.",
+    "segmentAssignments": [ { "segmentId": "seg_san_jose_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_san_jose_team"] } ],
+    "authorizedRolesOrTeams": ["team_san_jose", "region_california_north"],
+    "updatedAt": "2026-08-14T10:00:00Z"
+  },
+  {
+    "_id": "VIN_RIVIAN_009",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1S", "color": "Rivian Blue", "vin": "1FTFW1E81MF100009", "firmwareVersion": "v2026.12.4", "batteryCapacityKw": 149 },
+    "unstructuredNotes": "Confidential recall candidate: potential battery cell thermal runaway risk flagged by engineering during fast-charge stress testing.",
+    "segmentAssignments": [ { "segmentId": "seg_california_north", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north"] } ],
+    "authorizedRolesOrTeams": ["role_fleet_admin"],
+    "updatedAt": "2026-08-15T10:00:00Z"
+  },
+  {
+    "_id": "VIN_GLOBEX_001",
+    "tenantId": "globex_logistics",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1T", "color": "Rivian Blue", "vin": "9GX00000000000001", "firmwareVersion": "v2026.12.4", "batteryCapacityKw": 135 },
+    "unstructuredNotes": "Battery thermal throttling detected during fast charging test.",
+    "segmentAssignments": [ { "segmentId": "seg_globex_midwest", "ancestorSegments": ["seg_globex_global", "seg_globex_midwest"] } ],
+    "authorizedRolesOrTeams": ["region_california_north"],
+    "updatedAt": "2026-08-16T10:00:00Z"
+  },
+  {
+    "_id": "EBIKE_003",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "e_bike",
+    "attributes": { "make": "Rivian", "model": "e-Bike Commuter", "batteryWattHours": 500 },
+    "unstructuredNotes": "Bluetooth pairing with companion app fails intermittently.",
+    "segmentAssignments": [ { "segmentId": "seg_austin_team", "ancestorSegments": ["seg_global", "seg_texas", "seg_austin_team"] } ],
+    "authorizedRolesOrTeams": ["team_austin", "region_texas"],
+    "updatedAt": "2026-08-17T10:00:00Z"
+  },
+  {
+    "_id": "CHARGER_EV_105",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "ev_charger",
+    "attributes": { "maxKw": 150, "connectorType": "CCS1", "firmware": "v4.1.0" },
+    "unstructuredNotes": "Ground fault interrupter tripped twice this week during rainy conditions.",
+    "segmentAssignments": [ { "segmentId": "seg_hayward_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_hayward_team"] } ],
+    "authorizedRolesOrTeams": ["team_hayward", "region_california_north"],
+    "updatedAt": "2026-08-18T10:00:00Z"
+  }
+]

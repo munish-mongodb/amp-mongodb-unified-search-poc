@@ -1,0 +1,126 @@
+[
+  {
+    "_id": "seg_global",
+    "tenantId": "acme_fleet_corp",
+    "name": "Global",
+    "segmentType": "global",
+    "owner": "usr_exec_99",
+    "status": "active",
+    "hierarchy": { "parentId": null, "ancestors": [], "path": ",seg_global," },
+    "createdAt": "2025-01-01T08:00:00Z"
+  },
+  {
+    "_id": "seg_us_west",
+    "tenantId": "acme_fleet_corp",
+    "name": "US West Region",
+    "segmentType": "super_region",
+    "owner": "usr_exec_42",
+    "status": "active",
+    "hierarchy": { "parentId": "seg_global", "ancestors": ["seg_global"], "path": ",seg_global,seg_us_west," },
+    "createdAt": "2025-01-02T08:00:00Z"
+  },
+  {
+    "_id": "seg_california",
+    "tenantId": "acme_fleet_corp",
+    "name": "California",
+    "segmentType": "state",
+    "owner": "usr_exec_17",
+    "status": "active",
+    "hierarchy": { "parentId": "seg_us_west", "ancestors": ["seg_global", "seg_us_west"], "path": ",seg_global,seg_us_west,seg_california," },
+    "createdAt": "2025-01-03T08:00:00Z"
+  },
+  {
+    "_id": "seg_california_north",
+    "tenantId": "acme_fleet_corp",
+    "name": "Northern California Fleet Operations",
+    "segmentType": "region",
+    "owner": "usr_exec_99",
+    "status": "active",
+    "hierarchy": {
+      "parentId": "seg_california",
+      "ancestors": ["seg_global", "seg_us_west", "seg_california"],
+      "path": ",seg_global,seg_us_west,seg_california,seg_california_north,"
+    },
+    "createdAt": "2026-01-15T08:00:00Z"
+  },
+  {
+    "_id": "seg_hayward_team",
+    "tenantId": "acme_fleet_corp",
+    "name": "Hayward Depot Team",
+    "segmentType": "team",
+    "owner": "usr_mgr_11",
+    "status": "active",
+    "hierarchy": {
+      "parentId": "seg_california_north",
+      "ancestors": ["seg_global", "seg_us_west", "seg_california", "seg_california_north"],
+      "path": ",seg_global,seg_us_west,seg_california,seg_california_north,seg_hayward_team,"
+    },
+    "createdAt": "2026-01-16T08:00:00Z"
+  },
+  {
+    "_id": "seg_san_jose_team",
+    "tenantId": "acme_fleet_corp",
+    "name": "San Jose Depot Team",
+    "segmentType": "team",
+    "owner": "usr_mgr_12",
+    "status": "active",
+    "hierarchy": {
+      "parentId": "seg_california_north",
+      "ancestors": ["seg_global", "seg_us_west", "seg_california", "seg_california_north"],
+      "path": ",seg_global,seg_us_west,seg_california,seg_california_north,seg_san_jose_team,"
+    },
+    "createdAt": "2026-01-16T08:05:00Z"
+  },
+  {
+    "_id": "seg_texas",
+    "tenantId": "acme_fleet_corp",
+    "name": "Texas",
+    "segmentType": "state",
+    "owner": "usr_exec_23",
+    "status": "active",
+    "hierarchy": {
+      "parentId": "seg_global",
+      "ancestors": ["seg_global"],
+      "path": ",seg_global,seg_texas,"
+    },
+    "createdAt": "2025-02-01T08:00:00Z"
+  },
+  {
+    "_id": "seg_austin_team",
+    "tenantId": "acme_fleet_corp",
+    "name": "Austin Depot Team",
+    "segmentType": "team",
+    "owner": "usr_mgr_20",
+    "status": "active",
+    "hierarchy": {
+      "parentId": "seg_texas",
+      "ancestors": ["seg_global", "seg_texas"],
+      "path": ",seg_global,seg_texas,seg_austin_team,"
+    },
+    "createdAt": "2026-01-20T08:00:00Z"
+  },
+  {
+    "_id": "seg_globex_global",
+    "tenantId": "globex_logistics",
+    "name": "Global",
+    "segmentType": "global",
+    "owner": "usr_globex_1",
+    "status": "active",
+    "hierarchy": { "parentId": null, "ancestors": [], "path": ",seg_globex_global," },
+    "createdAt": "2025-03-01T08:00:00Z"
+  },
+  {
+    "_id": "seg_globex_midwest",
+    "tenantId": "globex_logistics",
+    "name": "Midwest Region",
+    "segmentType": "region",
+    "owner": "usr_globex_2",
+    "status": "active",
+    "hierarchy": {
+      "parentId": "seg_globex_global",
+      "ancestors": ["seg_globex_global"],
+      "path": ",seg_globex_global,seg_globex_midwest,"
+    },
+    "createdAt": "2025-03-02T08:00:00Z"
+  }
+]
