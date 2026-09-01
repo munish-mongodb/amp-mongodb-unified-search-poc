@@ -22,7 +22,7 @@ the real behavior:
 | Spec said | Reality (verified live) |
 |---|---|
 | `autoEmbed` as a `mappings.fields` entry, model `voyage-3` | `autoEmbed` is real, but it's a top-level `fields` array entry (`type: "autoEmbed"`, `modality: "text"`), and only supports the `voyage-4` model family -- `voyage-3.x` is rejected. Native server-side embedding **works** once you use the right shape. |
-| `$rerank` aggregation stage | Not a real pipeline stage (`Unrecognized pipeline stage name: '$rerank'`). Reranking works today as a Voyage AI `.rerank()` API call layered on top of `$vectorSearch` results. |
+| `$rerank` aggregation stage, params `queryText`/`field`/`topK` | `$rerank` is a real MongoDB 8.3+ **Preview** stage, but with different params (`model`, `query.text`, `path`, `numDocsToRerank`) and two hard requirements: (1) Native Reranking enabled in Atlas **Project Settings**, and (2) the **cluster itself** running MongoDB 8.3+. Enabling the project setting alone does nothing on an older mongod -- you'll still get `Unrecognized pipeline stage name: '$rerank'`. It also cannot take `$rankFusion`/`$scoreFusion` as input. The notebook tries native `$rerank` first and falls back to a Voyage AI `.rerank()` API call if the server rejects the stage. |
 | *(not mentioned)* | MongoDB ships a native **`$rankFusion`** stage that combines keyword (`$search`) and vector (`$vectorSearch`) sub-pipelines with reciprocal rank fusion in a single aggregation call -- a better hybrid-search primitive than the spec assumed existed. |
 
 ## Requirements coverage
@@ -33,7 +33,7 @@ the real behavior:
 | REQ-02 | Polymorphic schema across asset classes | Notebook Part B | 3 asset types (`vehicle`, `ev_charger`, `e_bike`), different attribute shapes, no migrations |
 | REQ-03 | Hybrid keyword + vector search | Notebook Part E | Native `$rankFusion`, tenant/role filter applied inside each sub-pipeline |
 | REQ-04 | Native Atlas auto-embedding via Voyage AI | Notebook Part C/E | `autoEmbed` index genuinely builds and queries server-side (voyage-4, 1024 dims) |
-| REQ-05 | In-engine / integrated reranking | Notebook Part F | Voyage `rerank-2.5` demonstrably reorders top-5 results (not just relabels scores) |
+| REQ-05 | In-engine / integrated reranking | Notebook Part F | `rerank-2.5` demonstrably reorders top-5 results (not just relabels scores). Uses native server-side `$rerank` if the cluster is MongoDB 8.3+ with Native Reranking enabled; otherwise falls back to the Voyage AI API automatically -- same result either way, notebook prints which path ran |
 
 ## Repo layout
 

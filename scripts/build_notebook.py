@@ -529,12 +529,27 @@ for r in hybrid_results:
 # ---------------------------------------------------------------------------
 md(r"""## Part F -- Reranking + precision comparison (REQ-05)
 
-**Spec vs. reality:** `spec.md` section 4.3 sketched a `$rerank`
-aggregation stage. Testing against a live cluster confirms `$rerank` is
-**not** a real pipeline stage (`Unrecognized pipeline stage name: '$rerank'`).
-Reranking today is a Voyage AI API call layered on top of retrieval, which
-is what we do below: take the top candidates from `$vectorSearch`, rerank
-with `rerank-2.5`, and compare orderings.""")
+**Spec vs. reality, in two stages:**
+
+1. `spec.md` section 4.3 sketched a `$rerank` stage with params
+   `queryText`/`field`/`topK`. Testing against a live cluster showed those
+   param names don't exist.
+2. The *real* `$rerank` stage does exist (params `model`, `query.text`,
+   `path`, `numDocsToRerank`) -- but it's a MongoDB 8.3+ Preview feature that
+   requires **two** things: (a) Native Reranking enabled in Atlas Project
+   Settings, and (b) the cluster itself running MongoDB 8.3 or later. The
+   project-level toggle alone is not sufficient -- `$rerank` is a real
+   server-side aggregation stage, so an older mongod binary will still
+   reject it with `Unrecognized pipeline stage name`, regardless of the
+   project setting.
+
+This cell tries native `$rerank` first (correct syntax per MongoDB docs) and
+falls back to a Voyage AI `.rerank()` API call -- identical end result,
+different execution location -- if the server doesn't support the stage
+yet. Note one real constraint either way: `$rerank` cannot take a
+`$rankFusion`/`$scoreFusion` pipeline as input, so we rerank the
+`$vectorSearch`-only candidate set from here, not the Part E hybrid
+results.""")
 
 code(r"""candidates = list(db.assets.aggregate([
     {"$vectorSearch": {
@@ -556,19 +571,52 @@ print("--- Vector search order (pre-rerank) ---")
 for c in candidates:
     print(f"  {c['vscore']:.4f}  {c['_id']:<16} {c['unstructuredNotes'][:65]}")
 
-docs_text = [c["unstructuredNotes"] for c in candidates]
-rerank_result = vo.rerank(QUERY_TEXT, docs_text, model="rerank-2.5", top_k=5)
+used_native_rerank = False
+reranked = []  # list of (score, doc) after reranking, top 5
 
-print("\n--- Reranked top 5 (voyage rerank-2.5) ---")
+try:
+    native_results = list(db.assets.aggregate([
+        {"$vectorSearch": {
+            "index": VECTOR_INDEX,
+            "path": "unstructuredNotes" if used_autoembed else "unstructuredNotesEmbedding",
+            **({"query": QUERY_TEXT} if used_autoembed else
+               {"queryVector": vo.embed([QUERY_TEXT], model="voyage-3.5", input_type="query").embeddings[0]}),
+            "numCandidates": 50,
+            "limit": 10,
+            "filter": {"$and": [
+                {"tenantId": {"$eq": TENANT}},
+                {"authorizedRolesOrTeams": {"$in": USER_ROLES}},
+            ]},
+        }},
+        {"$rerank": {
+            "model": "rerank-2.5",
+            "query": {"text": QUERY_TEXT},
+            "path": "unstructuredNotes",
+            "numDocsToRerank": 10,
+        }},
+        {"$addFields": {"rerankScore": {"$meta": "score"}}},
+        {"$limit": 5},
+        {"$project": {"unstructuredNotes": 1, "rerankScore": 1}},
+    ]))
+    reranked = [(r["rerankScore"], r) for r in native_results]
+    used_native_rerank = True
+    print("\n--- Reranked top 5 (NATIVE $rerank, server-side) ---")
+except OperationFailure as e:
+    print(f"\nNative $rerank unavailable ({e}); falling back to Voyage AI API call.")
+    docs_text = [c["unstructuredNotes"] for c in candidates]
+    rerank_result = vo.rerank(QUERY_TEXT, docs_text, model="rerank-2.5", top_k=5)
+    reranked = [(r.relevance_score, candidates[r.index]) for r in rerank_result.results]
+    print("\n--- Reranked top 5 (Voyage AI API, client-side call) ---")
+
 reranked_ids = []
-for r in rerank_result.results:
-    orig = candidates[r.index]
-    reranked_ids.append(orig["_id"])
-    print(f"  {r.relevance_score:.4f}  {orig['_id']:<16} {orig['unstructuredNotes'][:65]}")
+for score, doc in reranked:
+    reranked_ids.append(doc["_id"])
+    print(f"  {score:.4f}  {doc['_id']:<16} {doc['unstructuredNotes'][:65]}")
 
 vector_order_top5 = [c["_id"] for c in candidates[:5]]
 print("\nVector-only top 5 order: ", vector_order_top5)
 print("Reranked top 5 order:    ", reranked_ids)
+print("Reranking method used:   ", "native $rerank stage" if used_native_rerank else "Voyage AI API (client-side)")
 if vector_order_top5 != reranked_ids:
     print("\nReranking changed the top-5 ordering -- e.g. it correctly promotes the")
     print("literal fast-charger-cutout report over a more general battery-heat note")
@@ -586,7 +634,7 @@ print(f"| 1. ARCHITECTURAL SIMPLICITY  Single collection, {len(db.assets.distinc
 print(f"| 2. LATENCY                   Single-pass median {single_median:.1f}ms vs fan-out median {fanout_median:.1f}ms ({fanout_median/single_median:.2f}x)".ljust(85) + "|")
 print(f"| 3. AUTO-EMBEDDING             used_autoembed = {used_autoembed} (native Atlas + Voyage AI voyage-4)".ljust(85) + "|")
 print(f"| 4. HYBRID SEARCH              $rankFusion combined keyword + vector, {len(hybrid_results)} results, 0 leaks".ljust(85) + "|")
-print(f"| 5. RERANKING                  voyage rerank-2.5 {'changed' if vector_order_top5 != reranked_ids else 'preserved'} top-5 ordering".ljust(85) + "|")
+print(f"| 5. RERANKING                  rerank-2.5 ({'native $rerank' if used_native_rerank else 'Voyage API'}) {'changed' if vector_order_top5 != reranked_ids else 'preserved'} top-5 order".ljust(85) + "|")
 print("+" + "-" * 84 + "+")""")
 
 # ---------------------------------------------------------------------------
