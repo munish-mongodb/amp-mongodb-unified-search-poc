@@ -178,5 +178,18 @@
     "segmentAssignments": [ { "segmentId": "seg_hayward_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_hayward_team"] } ],
     "authorizedRolesOrTeams": ["team_hayward", "region_california_north"],
     "updatedAt": "2026-08-18T10:00:00Z"
+  },
+  {
+    "_id": "VIN_RIVIAN_010",
+    "tenantId": "acme_fleet_corp",
+    "assetType": "vehicle",
+    "attributes": { "make": "Rivian", "model": "R1T", "color": "Rivian Blue", "vin": "1FTFW1E81MF100010", "firmwareVersion": "v2026.12.4", "batteryCapacityKw": 135 },
+    "unstructuredNotes": "Shared pool vehicle rotated daily between Hayward and San Jose depots based on demand; not permanently assigned to either team.",
+    "segmentAssignments": [
+      { "segmentId": "seg_hayward_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_hayward_team"] },
+      { "segmentId": "seg_san_jose_team", "ancestorSegments": ["seg_global", "seg_us_west", "seg_california", "seg_california_north", "seg_san_jose_team"] }
+    ],
+    "authorizedRolesOrTeams": ["team_hayward", "team_san_jose", "region_california_north"],
+    "updatedAt": "2026-08-19T10:00:00Z"
   }
 ]

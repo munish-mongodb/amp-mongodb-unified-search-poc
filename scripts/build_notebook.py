@@ -461,6 +461,42 @@ still_works = list(db.assets.find(
 ))
 print(f"Authorization query for 'team_hayward' still returns {len(still_works)} assets, unaffected by the rename above.")""")
 
+md(r"""### Many-to-many: one asset, multiple segments
+
+`segmentAssignments` is an array specifically because the relationship
+between assets and segments is many-to-many, not one-to-many. We already
+saw many *assets* mapping to one segment (`seg_hayward_team`); the other
+direction -- one *asset* belonging to multiple segments simultaneously --
+matters for shared/pooled assets (a vehicle rotated between two depot
+teams) or orthogonal tagging (a geographic segment plus an unrelated
+functional one). `VIN_RIVIAN_010` in the seed data is exactly this: a pool
+vehicle assigned to **both** `seg_hayward_team` and `seg_san_jose_team` at
+once, with both teams' roles in `authorizedRolesOrTeams`.
+
+The array's `$in` semantics mean membership in *either* segment's role is
+sufficient for access -- an OR, not an AND -- which is exactly what a
+shared asset needs: both teams can see and manage it, neither is required
+to jointly authorize every query.""")
+
+code(r"""multi_segment_assets = list(db.assets.aggregate([
+    {"$project": {"numSegments": {"$size": "$segmentAssignments"}}},
+    {"$match": {"numSegments": {"$gt": 1}}},
+]))
+print(f"Assets belonging to >1 segment simultaneously: {len(multi_segment_assets)}")
+for a in multi_segment_assets:
+    print(f"  {a['_id']} -> {a['numSegments']} segments")
+
+# Prove the OR semantics live: a user with ONLY team_hayward, and a
+# separate user with ONLY team_san_jose, must BOTH see the pool vehicle --
+# neither role alone should be treated as insufficient.
+for role in ["team_hayward", "team_san_jose", "team_austin"]:
+    results = db.assets.find_one({
+        "tenantId": "acme_fleet_corp",
+        "authorizedRolesOrTeams": {"$in": [role]},
+        "_id": "VIN_RIVIAN_010",
+    })
+    print(f"User with only '{role:<14}' role sees pool vehicle VIN_RIVIAN_010: {results is not None}")""")
+
 # ---------------------------------------------------------------------------
 md(r"""## Part E -- Hybrid keyword + vector search with auto-embedding (REQ-03, REQ-04)
 

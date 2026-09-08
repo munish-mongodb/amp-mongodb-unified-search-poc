@@ -67,6 +67,14 @@ check confirms touches 0 documents in `assets`, immediately followed by
 re-running the REQ-01 authorization query to confirm it's completely
 unaffected by the rename.
 
+`segmentAssignments` is also an array specifically because the
+asset-to-segment relationship is **many-to-many**, not one-to-many. Part D
+demonstrates both directions live: many assets already map to one segment
+(6+ assets under `seg_hayward_team`), and a seeded pool vehicle
+(`VIN_RIVIAN_010`) maps to two segments simultaneously, proving a shared
+asset is visible to *either* team's role independently (OR semantics), not
+gated behind both.
+
 ## Repo layout
 
 ```
@@ -127,6 +135,15 @@ prove security filtering actually works, not just that queries compile:
 
 Every query in the notebook asserts these are excluded from results, not
 just prints output for a human to eyeball.
+
+`VIN_RIVIAN_010` is the opposite kind of test case: a pool vehicle
+deliberately assigned to **two** segments at once (`seg_hayward_team` and
+`seg_san_jose_team`), proving `segmentAssignments`/`authorizedRolesOrTeams`
+are genuinely many-to-many, not one-to-many -- an asset can belong to
+multiple teams simultaneously (shared/pooled equipment), and membership in
+*either* team's role is sufficient for access (`$in` is OR, not AND). The
+notebook asserts a user with only `team_hayward` and a separate user with
+only `team_san_jose` **both** see it, and a `team_austin` user does not.
 
 ## Known limitations of this POC
 
