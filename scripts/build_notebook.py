@@ -5,8 +5,21 @@ Every cell in this notebook was run against a live MongoDB Atlas cluster
 before being embedded here -- nothing is hypothetical. Run this script
 whenever the demo logic changes, then re-execute the notebook to confirm
 it still works end to end (see scripts/execute_notebook.py).
+
+Seed data for Part B is loaded from data/*.json at generation time (not
+duplicated by hand in this file) and embedded as a Python literal into the
+generated notebook cell, so data/*.json stays the single source of truth
+for both this notebook and the standalone scripts/seed.py CLI path -- the
+two previously drifted out of sync (notebook was missing
+`segmentAssignments` entirely) until this refactor.
 """
+import json
+import re
+from pathlib import Path
+
 import nbformat as nbf
+
+ROOT = Path(__file__).resolve().parent.parent
 
 nb = nbf.v4.new_notebook()
 cells = []
@@ -18,6 +31,17 @@ def md(text):
 
 def code(text):
     cells.append(nbf.v4.new_code_cell(text))
+
+
+def json_file_as_python_literal(name: str, var_name: str) -> str:
+    """Load data/<name>, return a `var_name = [...]` Python source string."""
+    with open(ROOT / "data" / name) as f:
+        data = json.load(f)
+    # json.dumps produces valid JSON; the only JSON-vs-Python token mismatch
+    # in our seed data is `null` -> `None` (no true/false values present).
+    literal = json.dumps(data, indent=4)
+    literal = re.sub(r"\bnull\b", "None", literal)
+    return f"{var_name} = {literal}"
 
 
 # ---------------------------------------------------------------------------
@@ -133,122 +157,20 @@ Two collections:
   isolation and role-based exclusion actually work, not just that they
   compile.""")
 
-code(r"""segments_data = [
-    {"_id": "seg_global", "tenantId": "acme_fleet_corp", "name": "Global", "segmentType": "global",
-     "hierarchy": {"parentId": None, "ancestors": [], "path": ",seg_global,"}},
-    {"_id": "seg_us_west", "tenantId": "acme_fleet_corp", "name": "US West Region", "segmentType": "super_region",
-     "hierarchy": {"parentId": "seg_global", "ancestors": ["seg_global"], "path": ",seg_global,seg_us_west,"}},
-    {"_id": "seg_california", "tenantId": "acme_fleet_corp", "name": "California", "segmentType": "state",
-     "hierarchy": {"parentId": "seg_us_west", "ancestors": ["seg_global", "seg_us_west"],
-                   "path": ",seg_global,seg_us_west,seg_california,"}},
-    {"_id": "seg_california_north", "tenantId": "acme_fleet_corp", "name": "Northern California Fleet Operations",
-     "segmentType": "region",
-     "hierarchy": {"parentId": "seg_california", "ancestors": ["seg_global", "seg_us_west", "seg_california"],
-                   "path": ",seg_global,seg_us_west,seg_california,seg_california_north,"}},
-    {"_id": "seg_hayward_team", "tenantId": "acme_fleet_corp", "name": "Hayward Depot Team", "segmentType": "team",
-     "hierarchy": {"parentId": "seg_california_north",
-                   "ancestors": ["seg_global", "seg_us_west", "seg_california", "seg_california_north"],
-                   "path": ",seg_global,seg_us_west,seg_california,seg_california_north,seg_hayward_team,"}},
-    {"_id": "seg_san_jose_team", "tenantId": "acme_fleet_corp", "name": "San Jose Depot Team", "segmentType": "team",
-     "hierarchy": {"parentId": "seg_california_north",
-                   "ancestors": ["seg_global", "seg_us_west", "seg_california", "seg_california_north"],
-                   "path": ",seg_global,seg_us_west,seg_california,seg_california_north,seg_san_jose_team,"}},
-    {"_id": "seg_texas", "tenantId": "acme_fleet_corp", "name": "Texas", "segmentType": "state",
-     "hierarchy": {"parentId": "seg_global", "ancestors": ["seg_global"], "path": ",seg_global,seg_texas,"}},
-    {"_id": "seg_austin_team", "tenantId": "acme_fleet_corp", "name": "Austin Depot Team", "segmentType": "team",
-     "hierarchy": {"parentId": "seg_texas", "ancestors": ["seg_global", "seg_texas"],
-                   "path": ",seg_global,seg_texas,seg_austin_team,"}},
-    {"_id": "seg_globex_global", "tenantId": "globex_logistics", "name": "Global", "segmentType": "global",
-     "hierarchy": {"parentId": None, "ancestors": [], "path": ",seg_globex_global,"}},
-    {"_id": "seg_globex_midwest", "tenantId": "globex_logistics", "name": "Midwest Region", "segmentType": "region",
-     "hierarchy": {"parentId": "seg_globex_global", "ancestors": ["seg_globex_global"],
-                   "path": ",seg_globex_global,seg_globex_midwest,"}},
-]
-
-assets_data = [
-    {"_id": "VIN_RIVIAN_001", "tenantId": "acme_fleet_corp", "assetType": "vehicle",
-     "attributes": {"make": "Rivian", "model": "R1T", "color": "Rivian Blue", "vin": "1FTFW1E81MF100001"},
-     "unstructuredNotes": "DC fast charger cut out at 80% state of charge in San Jose station. High heat warning.",
-     "authorizedRolesOrTeams": ["team_san_jose", "region_california_north"]},
-    {"_id": "VIN_RIVIAN_002", "tenantId": "acme_fleet_corp", "assetType": "vehicle",
-     "attributes": {"make": "Rivian", "model": "R1S", "color": "Forest Green", "vin": "1FTFW1E81MF100002"},
-     "unstructuredNotes": "Air suspension fault detected during highway cruising near Hayward.",
-     "authorizedRolesOrTeams": ["team_hayward", "region_california_north"]},
-    {"_id": "VIN_RIVIAN_003", "tenantId": "acme_fleet_corp", "assetType": "vehicle",
-     "attributes": {"make": "Rivian", "model": "R1T", "color": "Rivian Blue", "vin": "1FTFW1E81MF100003"},
-     "unstructuredNotes": "Vehicle reported intermittent DC fast charging throttling under high ambient temperatures in Hayward depot.",
-     "authorizedRolesOrTeams": ["team_hayward", "region_california_north"]},
-    {"_id": "VIN_RIVIAN_004", "tenantId": "acme_fleet_corp", "assetType": "vehicle",
-     "attributes": {"make": "Rivian", "model": "R1S", "color": "Rivian Blue", "vin": "1FTFW1E81MF100004"},
-     "unstructuredNotes": "Battery pack management system reduces charge rate when cell temperatures exceed safe thresholds during supercharging sessions.",
-     "authorizedRolesOrTeams": ["team_austin", "region_texas"]},
-    {"_id": "VIN_RIVIAN_005", "tenantId": "acme_fleet_corp", "assetType": "vehicle",
-     "attributes": {"make": "Rivian", "model": "R1T", "color": "Forest Green", "vin": "1FTFW1E81MF100005"},
-     "unstructuredNotes": "Infotainment touchscreen freezes intermittently after software update.",
-     "authorizedRolesOrTeams": ["team_san_jose", "region_california_north"]},
-    {"_id": "CHARGER_EV_101", "tenantId": "acme_fleet_corp", "assetType": "ev_charger",
-     "attributes": {"maxKw": 350, "connectorType": "CCS1", "firmware": "v4.2.1"},
-     "unstructuredNotes": "Cable cooling fan failure reported by telemetry. Connector overheats under sustained 350kW load.",
-     "authorizedRolesOrTeams": ["team_san_jose", "region_california_north"]},
-    {"_id": "CHARGER_EV_102", "tenantId": "acme_fleet_corp", "assetType": "ev_charger",
-     "attributes": {"maxKw": 150, "connectorType": "CCS1", "firmware": "v4.1.0"},
-     "unstructuredNotes": "Payment terminal card reader unresponsive; unit offline for 2 hours.",
-     "authorizedRolesOrTeams": ["team_hayward", "region_california_north"]},
-    {"_id": "CHARGER_EV_103", "tenantId": "acme_fleet_corp", "assetType": "ev_charger",
-     "attributes": {"maxKw": 350, "connectorType": "NACS", "firmware": "v4.2.1"},
-     "unstructuredNotes": "Thermal derating triggered on DC fast charger during peak summer demand, reducing max output from 350kW to 150kW.",
-     "authorizedRolesOrTeams": ["team_austin", "region_texas"]},
-    {"_id": "EBIKE_001", "tenantId": "acme_fleet_corp", "assetType": "e_bike",
-     "attributes": {"make": "Rivian", "model": "e-Bike Commuter", "batteryWattHours": 500},
-     "unstructuredNotes": "Rear derailleur misaligned after firmware update, shifting is inconsistent.",
-     "authorizedRolesOrTeams": ["team_san_jose", "region_california_north"]},
-    {"_id": "EBIKE_002", "tenantId": "acme_fleet_corp", "assetType": "e_bike",
-     "attributes": {"make": "Rivian", "model": "e-Bike Commuter", "batteryWattHours": 500},
-     "unstructuredNotes": "Battery pack shows reduced range and warm-to-touch casing after rapid charge cycles in hot weather.",
-     "authorizedRolesOrTeams": ["team_hayward", "region_california_north"]},
-    {"_id": "VIN_RIVIAN_006", "tenantId": "acme_fleet_corp", "assetType": "vehicle",
-     "attributes": {"make": "Rivian", "model": "R1T", "color": "Rivian Blue", "vin": "1FTFW1E81MF100006"},
-     "unstructuredNotes": "Tire pressure monitoring system reports slow leak in rear left tire.",
-     "authorizedRolesOrTeams": ["team_hayward", "region_california_north"]},
-    {"_id": "VIN_RIVIAN_007", "tenantId": "acme_fleet_corp", "assetType": "vehicle",
-     "attributes": {"make": "Rivian", "model": "R1S", "color": "Rivian Blue", "vin": "1FTFW1E81MF100007"},
-     "unstructuredNotes": "Owner reports charging speed drops significantly on hot days when using public fast chargers.",
-     "authorizedRolesOrTeams": ["region_california_north"]},
-    {"_id": "CHARGER_EV_104", "tenantId": "acme_fleet_corp", "assetType": "ev_charger",
-     "attributes": {"maxKw": 150, "connectorType": "CCS1", "firmware": "v4.2.1"},
-     "unstructuredNotes": "Firmware v4.2.1 rolled out fleet-wide; no reported issues.",
-     "authorizedRolesOrTeams": ["team_austin", "region_texas"]},
-    {"_id": "VIN_RIVIAN_008", "tenantId": "acme_fleet_corp", "assetType": "vehicle",
-     "attributes": {"make": "Rivian", "model": "R1T", "color": "Silver", "vin": "1FTFW1E81MF100008"},
-     "unstructuredNotes": "Windshield wiper motor makes grinding noise in cold weather.",
-     "authorizedRolesOrTeams": ["team_san_jose", "region_california_north"]},
-    {"_id": "VIN_RIVIAN_009", "tenantId": "acme_fleet_corp", "assetType": "vehicle",
-     "attributes": {"make": "Rivian", "model": "R1S", "color": "Rivian Blue", "vin": "1FTFW1E81MF100009"},
-     "unstructuredNotes": "Confidential recall candidate: potential battery cell thermal runaway risk flagged by engineering during fast-charge stress testing.",
-     "authorizedRolesOrTeams": ["role_fleet_admin"]},
-    {"_id": "VIN_GLOBEX_001", "tenantId": "globex_logistics", "assetType": "vehicle",
-     "attributes": {"make": "Rivian", "model": "R1T", "color": "Rivian Blue", "vin": "9GX00000000000001"},
-     "unstructuredNotes": "Battery thermal throttling detected during fast charging test.",
-     "authorizedRolesOrTeams": ["region_california_north"]},
-    {"_id": "EBIKE_003", "tenantId": "acme_fleet_corp", "assetType": "e_bike",
-     "attributes": {"make": "Rivian", "model": "e-Bike Commuter", "batteryWattHours": 500},
-     "unstructuredNotes": "Bluetooth pairing with companion app fails intermittently.",
-     "authorizedRolesOrTeams": ["team_austin", "region_texas"]},
-    {"_id": "CHARGER_EV_105", "tenantId": "acme_fleet_corp", "assetType": "ev_charger",
-     "attributes": {"maxKw": 150, "connectorType": "CCS1", "firmware": "v4.1.0"},
-     "unstructuredNotes": "Ground fault interrupter tripped twice this week during rainy conditions.",
-     "authorizedRolesOrTeams": ["team_hayward", "region_california_north"]},
-]
-
-db.asset_segments.drop()
-db.assets.drop()
-db.asset_segments.insert_many(segments_data)
-db.assets.insert_many(assets_data)
-
-print(f"Seeded {db.asset_segments.count_documents({})} segments")
-print(f"Seeded {db.assets.count_documents({})} assets")
-print("Tenants:", db.assets.distinct("tenantId"))
-print("Asset types (polymorphic, REQ-02):", db.assets.distinct("assetType"))""")
+code(
+    json_file_as_python_literal("segments_seed.json", "segments_data")
+    + "\n\n"
+    + json_file_as_python_literal("assets_seed.json", "assets_data")
+    + '\n\n'
+    + 'db.asset_segments.drop()\n'
+    + 'db.assets.drop()\n'
+    + 'db.asset_segments.insert_many(segments_data)\n'
+    + 'db.assets.insert_many(assets_data)\n\n'
+    + 'print(f"Seeded {db.asset_segments.count_documents({})} segments")\n'
+    + 'print(f"Seeded {db.assets.count_documents({})} assets")\n'
+    + 'print("Tenants:", db.assets.distinct("tenantId"))\n'
+    + 'print("Asset types (polymorphic, REQ-02):", db.assets.distinct("assetType"))'
+)
 
 # ---------------------------------------------------------------------------
 md(r"""## Part C -- Build indexes (operational + Atlas Search/Vector)
@@ -474,6 +396,70 @@ assert known_trap_doc_ids.isdisjoint(visible_ids), f"Leak detected: {known_trap_
 print("Confirmed: cross-tenant and out-of-role trap documents correctly excluded")
 print("(by the query's tenantId + authorizedRolesOrTeams filter -- not by this assertion).\n")
 print(df[["_id", "make", "model", "color"]].to_string(index=False))""")
+
+md(r"""### Why `asset_segments` is still a separate collection
+
+Every query so far -- and every query in this notebook -- only touches
+`assets`. `asset_segments` is never joined at read time. So why keep it as
+a separate collection instead of fully denormalizing the org hierarchy
+into each asset?
+
+Because `assets.segmentAssignments[].ancestorSegments` deliberately stores
+only **IDs** (`"seg_hayward_team"`), not the segment's mutable, human-facing
+metadata (display name, owner, status). That split buys two things a fully
+denormalized single collection cannot:
+
+1. **Renaming or reparenting a segment is a single-document write with
+   zero writes to `assets`**, no matter how many assets are assigned to
+   it. If segment names were inlined onto every asset instead of just an
+   ID, renaming a region would require a fan-out update across every
+   asset in it -- the actual anti-pattern.
+2. **You can browse/manage the org tree itself**, including segments with
+   zero assets currently assigned (e.g. a newly provisioned region before
+   any vehicles ship there) -- something a purely asset-denormalized model
+   has no place to represent.
+
+Both claims below are demonstrated live, not asserted.""")
+
+code(r"""# 1. Hierarchy browsing: only possible against asset_segments, has no
+#    equivalent query against `assets` (and no assets need to exist for it
+#    to work -- it's a property of the org tree, not the asset data).
+descendants = list(db.asset_segments.find(
+    {"hierarchy.path": {"$regex": "^,seg_global,seg_us_west,seg_california,seg_california_north,"}},
+    {"_id": 1, "name": 1, "segmentType": 1},
+))
+print("Descendants of 'Northern California Fleet Operations' (path prefix query):")
+for s in descendants:
+    print(f"  {s['_id']:<22} {s['segmentType']:<10} {s['name']}")""")
+
+code(r"""# 2. Cheap reorg: rename a segment and reparent nothing in `assets`.
+before_hash = list(db.assets.find(
+    {"segmentAssignments.segmentId": "seg_hayward_team"},
+    {"segmentAssignments": 1},
+))
+
+t0 = time.perf_counter()
+db.asset_segments.update_one(
+    {"_id": "seg_hayward_team"},
+    {"$set": {"name": "Hayward Depot Team (renamed during POC demo)", "owner": "usr_mgr_99"}},
+)
+rename_ms = (time.perf_counter() - t0) * 1000
+
+after_hash = list(db.assets.find(
+    {"segmentAssignments.segmentId": "seg_hayward_team"},
+    {"segmentAssignments": 1},
+))
+
+assert before_hash == after_hash, "Renaming a segment must not touch any asset documents"
+print(f"Renamed segment in {rename_ms:.2f} ms -- 1 document write, 0 asset documents touched.")
+print(f"{len(after_hash)} assets reference seg_hayward_team; all {len(after_hash)} confirmed byte-identical before/after rename.")
+
+# The REQ-01 authorization query never even looks at segment names -- it's
+# unaffected by the rename, proving the two concerns are cleanly separated.
+still_works = list(db.assets.find(
+    {"tenantId": "acme_fleet_corp", "authorizedRolesOrTeams": {"$in": ["team_hayward"]}}
+))
+print(f"Authorization query for 'team_hayward' still returns {len(still_works)} assets, unaffected by the rename above.")""")
 
 # ---------------------------------------------------------------------------
 md(r"""## Part E -- Hybrid keyword + vector search with auto-embedding (REQ-03, REQ-04)

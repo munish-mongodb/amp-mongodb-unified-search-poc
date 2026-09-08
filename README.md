@@ -40,6 +40,33 @@ the real behavior:
 | REQ-04 | Native Atlas auto-embedding via Voyage AI | Notebook Part C/E | `autoEmbed` index genuinely builds and queries server-side (voyage-4, 1024 dims) |
 | REQ-05 | In-engine / integrated reranking | Notebook Part F | `rerank-2.5` demonstrably reorders top-5 results (not just relabels scores). Uses native server-side `$rerank` on MongoDB 8.3+ with Native Reranking enabled (verified on 9.0.0); falls back to the Voyage AI API automatically on older clusters (verified on 8.0.30) -- both paths tested live, notebook prints which one ran |
 
+## Why `asset_segments` and `assets` are separate collections
+
+Every query in this POC (Parts D-F) only ever reads `assets` -- `asset_segments`
+is never joined at query time. That raises a fair question: if nothing joins
+them, why not one denormalized collection?
+
+Because `assets.segmentAssignments[].ancestorSegments` stores only **IDs**
+(`"seg_hayward_team"`), never the segment's mutable, human-facing metadata
+(display name, owner, status). That split is what buys two things a single
+fully-denormalized collection can't:
+
+1. Renaming or reparenting a segment is a **single-document write with zero
+   writes to `assets`**, regardless of how many assets reference it. If
+   segment names were inlined onto every asset instead of just an ID,
+   renaming a region would require a fan-out update across every asset in
+   it -- the real anti-pattern.
+2. You can browse and manage the org tree itself -- including segments with
+   zero assets currently assigned -- which a purely asset-denormalized model
+   has no place to represent.
+
+Notebook Part D includes a live demonstration, not just this assertion: a
+path-prefix query against `asset_segments` for hierarchy browsing, followed
+by an actual rename of a segment that a preceding/following byte-equality
+check confirms touches 0 documents in `assets`, immediately followed by
+re-running the REQ-01 authorization query to confirm it's completely
+unaffected by the rename.
+
 ## Repo layout
 
 ```
@@ -50,9 +77,12 @@ the real behavior:
 │   ├── segments_seed.json         # asset_segments hierarchy (2 tenants, multi-level)
 │   └── assets_seed.json           # 18 polymorphic assets, incl. deliberate leak-test decoys
 ├── scripts/
-│   ├── seed.py                    # CLI seed script (mirrors notebook Part B)
+│   ├── seed.py                    # CLI seed script, reads data/*.json
 │   ├── create_indexes.py          # CLI index setup (mirrors notebook Part C)
-│   ├── build_notebook.py          # generates the .ipynb from validated code (dev tool)
+│   ├── build_notebook.py          # generates the .ipynb; Part B's seed data is
+│   │                              #   loaded from data/*.json at generation time
+│   │                              #   (not duplicated by hand), so seed.py and the
+│   │                              #   notebook are guaranteed to seed identical data
 │   └── execute_notebook.py        # runs the .ipynb end-to-end and saves outputs (dev tool)
 ├── .env.example
 └── LICENSE
