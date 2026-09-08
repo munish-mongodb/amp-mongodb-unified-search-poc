@@ -68,6 +68,16 @@ def main() -> None:
     )
     print("Created operational index: tenant_acl_make_idx")
 
+    # 1b. Wildcard index on the polymorphic attributes sub-document (Attribute
+    # Pattern, MongoDB Data Modeling and Schema Design ch.6). `attributes` holds
+    # a different, unpredictable set of keys per assetType (vehicle: make/model/
+    # vin/batteryCapacityKw; ev_charger: maxKw/connectorType; e_bike:
+    # batteryWattHours; future types: unknown). Rather than hand-maintaining a
+    # single-field index per attribute per type as new asset types are added,
+    # one wildcard index covers ad hoc equality/range filters on any of them.
+    coll.create_index([("attributes.$**", ASCENDING)], name="attributes_wildcard_idx")
+    print("Created wildcard index: attributes_wildcard_idx")
+
     # 2. Plain Atlas Search index for keyword/full-text (REQ-03 keyword half)
     existing = {i["name"] for i in list_search_indexes_retry(coll)}
     if TEXT_SEARCH_INDEX_NAME not in existing:

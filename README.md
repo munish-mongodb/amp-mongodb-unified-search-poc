@@ -34,7 +34,7 @@ the real behavior:
 
 | Req | Feature | Where | Result |
 |---|---|---|---|
-| REQ-01 | Single-pass authorization, no cross-DB fan-out | Notebook Part D | Correctness-verified (identical result sets) and ~1.6-1.7x faster than a simulated 2-round-trip fan-out, at toy (18-doc) scale |
+| REQ-01 | Single-pass authorization, no cross-DB fan-out | Notebook Part D | Correctness-verified (identical result sets) and ~1.6-1.7x faster than a simulated 2-round-trip fan-out, at toy (19-doc) scale |
 | REQ-02 | Polymorphic schema across asset classes | Notebook Part B | 3 asset types (`vehicle`, `ev_charger`, `e_bike`), different attribute shapes, no migrations |
 | REQ-03 | Hybrid keyword + vector search | Notebook Part E | Native `$rankFusion`, tenant/role filter applied inside each sub-pipeline |
 | REQ-04 | Native Atlas auto-embedding via Voyage AI | Notebook Part C/E | `autoEmbed` index genuinely builds and queries server-side (voyage-4, 1024 dims) |
@@ -75,7 +75,54 @@ demonstrates both directions live: many assets already map to one segment
 asset is visible to *either* team's role independently (OR semantics), not
 gated behind both.
 
-## Repo layout
+## Schema design patterns applied (and one deliberately rejected)
+
+This data model was cross-checked against *MongoDB Data Modeling and Schema
+Design* (Coupal, Desmarets, Hoberman). Rather than treat that as a citation
+exercise, each applicable pattern below was either already present, or was
+added and verified live against the cluster:
+
+- **Polymorphic / Inheritance Pattern** -- `assets.assetType` (`vehicle`,
+  `ev_charger`, `e_bike`) determines which keys exist under `attributes`,
+  in one collection, with no per-type migration. This is REQ-02, already
+  built (Notebook Part B).
+- **Tree Pattern (parent ref + ancestors array + materialized path)** --
+  `asset_segments.hierarchy` stores `parentId`, `ancestors`, and `path`
+  together, which is the book's recommended combination when you need both
+  fast "all descendants" prefix queries (`path`) and fast "direct children"
+  lookups (`parentId`) without a graph traversal. Already built.
+- **Extended Reference Pattern, applied narrowly** --
+  `assets.segmentAssignments[].ancestorSegments` copies segment **IDs**
+  onto each asset (avoiding a join for REQ-01's authorization query) but
+  deliberately does *not* copy the segment's display name, owner, or
+  status. The book's own guidance for this pattern is to copy only fields
+  that rarely change; segment names/owners do change (we demonstrate a live
+  rename in Part D), so copying them would recreate the fan-out-on-update
+  problem the pattern exists to avoid. Copying only the stable ID satisfies
+  the pattern without the anti-pattern.
+- **Attribute Pattern** -- added in this pass. `attributes` has a different
+  key set per `assetType`, so `db.assets.create_index([("attributes.$**", 1)])`
+  (a native MongoDB wildcard index) covers ad hoc filtering on *any*
+  attribute -- present or added by a future asset type -- without hand
+  -maintaining one single-field index per attribute per type. Notebook Part
+  C1b proves it's actually used, not just created: the same query
+  (`attributes.connectorType: "CCS1"`) is run through `explain()` before
+  the index exists (`COLLSCAN`) and after (`IXSCAN` on
+  `attributes_wildcard_idx`).
+- **Schema Versioning Pattern** -- added in this pass. Every seed document
+  now carries `schemaVersion: 1`. Cheap now, and the book is blunt that
+  schema evolution ("not a matter of if, but when") is much easier to
+  handle from day one than to retrofit after the field is missing on
+  millions of existing documents.
+- **Single Collection Pattern -- considered, rejected.** The book's own
+  criterion for this pattern is when an application needs frequent,
+  low-latency queries that span multiple entity types together. That's not
+  this use case: REQ-01's authorization query only ever reads `assets`
+  (segment metadata is never joined at query time, see below), so merging
+  `asset_segments` and `assets` into one collection would add complexity
+  (a `docType` discriminator, mixed indexes) for a join that never happens.
+
+## Why `asset_segments` and `assets` are separate collections
 
 ```
 ├── spec.md                        # original technical spec this POC validates
@@ -83,7 +130,7 @@ gated behind both.
 │   └── amp_mongodb_poc.ipynb      # the executable, Colab-shareable demo (start here)
 ├── data/
 │   ├── segments_seed.json         # asset_segments hierarchy (2 tenants, multi-level)
-│   └── assets_seed.json           # 18 polymorphic assets, incl. deliberate leak-test decoys
+│   └── assets_seed.json           # 19 polymorphic assets, incl. deliberate leak-test decoys
 ├── scripts/
 │   ├── seed.py                    # CLI seed script, reads data/*.json
 │   ├── create_indexes.py          # CLI index setup (mirrors notebook Part C)
@@ -154,7 +201,7 @@ only `team_san_jose` **both** see it, and a `team_austin` user does not.
   a true cross-database (different systems, connection pools, serialization
   formats) fan-out would cost at production scale (~10,000 resolved IDs, per
   the spec's own numbers).
-- 18 seed documents is enough to demonstrate correctness and relative
+- 19 seed documents is enough to demonstrate correctness and relative
   ordering effects (hybrid search, reranking), not to make statistically
   rigorous precision/recall claims at production data volumes.
 - Atlas's search index management control plane occasionally returns a

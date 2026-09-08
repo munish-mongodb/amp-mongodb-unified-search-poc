@@ -186,6 +186,47 @@ code(r"""db.assets.create_index(
 )
 print("Created tenant_acl_make_idx")""")
 
+md(r"""### C1b. Wildcard index over polymorphic attributes (Attribute Pattern)
+
+`assets.attributes` is a **polymorphic** sub-document -- its keys differ by
+`assetType`: a `vehicle` has `make`/`model`/`vin`/`batteryCapacityKw`, an
+`ev_charger` has `maxKw`/`connectorType`, an `e_bike` has
+`batteryWattHours`, and any future asset type introduces its own set. The
+compound index above only covers `attributes.make`. Hand-maintaining a
+dedicated single-field index per attribute per type doesn't scale as new
+types are added.
+
+This is exactly the **Attribute Pattern** from *MongoDB Data Modeling and
+Schema Design* (Coupal, Desmarets, Hoberman) -- grouping an unpredictable,
+type-varying set of fields so they can be indexed and queried uniformly.
+MongoDB's native **wildcard index** (`"attributes.$**"`) is the built-in
+mechanism for this: one index definition covers ad hoc equality/range
+queries on *any* key under `attributes`, present or future, with no schema
+migration needed when a new asset type is added.
+
+We prove it actually gets used -- not just created -- by running the same
+query with `explain()` before and after the index exists.""")
+
+code(r"""# BEFORE: no index on attributes.connectorType -> collection scan
+before_plan = db.assets.find({"attributes.connectorType": "CCS1"}).explain()
+print("Winning plan stage WITHOUT wildcard index:", before_plan["queryPlanner"]["winningPlan"]["stage"])
+
+db.assets.create_index([("attributes.$**", ASCENDING)], name="attributes_wildcard_idx")
+print("\nCreated wildcard index: attributes_wildcard_idx")
+
+# AFTER: same query now uses the wildcard index
+after_plan = db.assets.find({"attributes.connectorType": "CCS1"}).explain()
+winning = after_plan["queryPlanner"]["winningPlan"]
+input_stage = winning.get("inputStage", {})
+print("Winning plan stage WITH wildcard index:   ", winning["stage"], "/", input_stage.get("stage"))
+print("Index used:", input_stage.get("indexName"))
+
+assert before_plan["queryPlanner"]["winningPlan"]["stage"] == "COLLSCAN"
+assert input_stage.get("indexName") == "attributes_wildcard_idx"
+print("\nConfirmed: COLLSCAN -> IXSCAN on a field (connectorType) that has")
+print("no dedicated index -- the wildcard index covers it for free, and will")
+print("keep covering any new attribute on any future asset type.")""")
+
 md(r"""### C2. Atlas Search index (keyword half of hybrid search, REQ-03)""")
 
 code(r"""existing = {i["name"] for i in list_search_indexes_retry(db.assets)}
@@ -356,7 +397,7 @@ print(f"Simulated fan-out (2 round trips), median of {N_TRIALS} runs: {fanout_me
 print(f"Single-pass MongoDB query,          median of {N_TRIALS} runs: {single_median:.1f} ms")
 print(f"Speedup: {fanout_median / single_median:.2f}x")
 print(f"\n({len(single_results)} results, sets identical across every trial -- correctness-equivalent, not just faster)")
-print("\nHonest caveat: at this tiny dataset size (18 docs) and querying the same")
+print("\nHonest caveat: at this tiny dataset size (19 docs) and querying the same")
 print("cluster for both paths, the gap mostly reflects one eliminated network")
 print("round trip plus app-layer $in assembly -- a few tens of ms here. The real")
 print("production case this spec targets (separate Postgres + Mongo systems,")
