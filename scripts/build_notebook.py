@@ -442,21 +442,37 @@ print("~10,000 resolved IDs, cross-system serialization) would show a much large
 print("gap; this benchmark isolates and confirms the round-trip-elimination effect")
 print("is real and directionally correct, not that it's dramatic at toy scale.")""")
 
-md(r"""### Authorization correctness check
+md(r"""### Authorization correctness check (test-fixture assertion, not the auth mechanism)
 
-A user with only `region_california_north` should never see the
-Texas-only asset (`VIN_RIVIAN_004`, role `region_texas`), the admin-only
-asset (`VIN_RIVIAN_009`, role `role_fleet_admin`), or *any* Globex Logistics
-asset -- even `VIN_GLOBEX_001`, which is deliberately seeded with the
-literal string `region_california_north` in its roles array under the
-*wrong tenant*, specifically to catch a filter that checks role but
-forgets tenant.""")
+**This is not the authorization pattern -- it's a regression test over our
+own known seed data.** The actual authorization logic is entirely the
+query above: `tenantId` + `authorizedRolesOrTeams: {"$in": roles}`, backed
+by the `tenant_acl_make_idx` index. It filters declaratively on fields
+every document already has; it never enumerates asset IDs and behaves
+identically whether the collection has 18 documents or 18 million.
+
+What follows just checks that query actually worked, by asserting that 3
+specific "trap" documents we deliberately seeded are *not* in the output
+for a user who should never see them:
+
+- `VIN_RIVIAN_004` -- right tenant, wrong role (`region_texas`, this user
+  only has `region_california_north`)
+- `VIN_RIVIAN_009` -- right tenant, admin-only role (`role_fleet_admin`)
+- `VIN_GLOBEX_001` -- **wrong tenant**, but with the literal string
+  `region_california_north` copy-pasted into its roles array. This one
+  specifically catches a filter that checks role but forgets tenant --
+  a real, common bug class, not a hypothetical one.
+
+This list stays at 3 items regardless of how large the real dataset is --
+it's not an allowlist/denylist that scales with data volume, it's a fixed
+set of known-bad cases a unit test would also hardcode.""")
 
 code(r"""df = pd.DataFrame([r["attributes"] | {"_id": r["_id"], "tenantId": r["tenantId"]} for r in single_results])
-excluded_ids = {"VIN_RIVIAN_004", "VIN_RIVIAN_009", "VIN_GLOBEX_001"}
+known_trap_doc_ids = {"VIN_RIVIAN_004", "VIN_RIVIAN_009", "VIN_GLOBEX_001"}  # test fixture, not prod logic
 visible_ids = set(df["_id"])
-assert excluded_ids.isdisjoint(visible_ids), f"Leak detected: {excluded_ids & visible_ids}"
-print("Confirmed: cross-tenant and out-of-role assets correctly excluded.\n")
+assert known_trap_doc_ids.isdisjoint(visible_ids), f"Leak detected: {known_trap_doc_ids & visible_ids}"
+print("Confirmed: cross-tenant and out-of-role trap documents correctly excluded")
+print("(by the query's tenantId + authorizedRolesOrTeams filter -- not by this assertion).\n")
 print(df[["_id", "make", "model", "color"]].to_string(index=False))""")
 
 # ---------------------------------------------------------------------------
