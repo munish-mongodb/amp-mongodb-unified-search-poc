@@ -21,6 +21,10 @@ Then e.g.:
     curl "http://localhost:8000/vehicles/search?vin=6493&tenant=amazon_logistics&role=region_amazon_logistics_0"
 """
 import os
+import random
+import string
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -29,9 +33,13 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from pymongo import MongoClient
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+from topology import MODEL_TO_RIVIAN_LINE_SEGMENT, SCHEMA_VERSION, compute_assignment  # noqa: E402
+
 load_dotenv(ROOT / ".env")
 
 MONGODB_URI = os.environ["MONGODB_URI"]
@@ -60,11 +68,18 @@ def auth_filter(tenant: str, role: str, segment: Optional[str] = None) -> dict:
     caller's tenant+role isn't entitled to. `segment`, if given, further
     narrows to a specific node's subtree (used by the Fleet Selection tree
     in the frontend) via the same ancestorSegments membership check used
-    for the rollup-count aggregation in notebook Part M."""
+    for the rollup-count aggregation in notebook Part M.
+
+    Scoped to `assetType: "vehicle"` -- this API surface is specifically
+    the "Vehicle Tracker" (matching the reference UI), and `assets` is
+    polymorphic (also holds ev_charger/e_bike docs, per REQ-02). Without
+    this, /vehicles would return chargers and e-bikes mixed into a table
+    whose columns (Model/Trim/Year) don't apply to them -- a real bug this
+    project caught by testing detail-view lookups, not by inspection."""
     elem_match = {"tenantId": tenant, "authorizedRolesOrTeams": role}
     if segment:
         elem_match["ancestorSegments"] = segment
-    return {"segmentAssignments": {"$elemMatch": elem_match}}
+    return {"assetType": "vehicle", "segmentAssignments": {"$elemMatch": elem_match}}
 
 
 @app.get("/tenants")
@@ -162,7 +177,9 @@ def list_vehicles(
         cursor_query = dict(query)
         cursor_query["_id"] = {"$gt": afterId}
         docs = list(db.assets.find(cursor_query, {"_id": 1, "attributes": 1}).sort("_id", 1).limit(pageSize))
-        vehicles = [{"vin": d["_id"], **d["attributes"]} for d in docs]
+        # attributes.vin is the real vehicle VIN shown/used by the frontend and
+        # detail/update/delete lookups below; _id is a separate internal doc key.
+        vehicles = [dict(d["attributes"]) for d in docs]
         return {"pageSize": pageSize, "totalCount": total, "vehicles": vehicles,
                 "nextAfterId": docs[-1]["_id"] if docs else None}
 
@@ -172,7 +189,7 @@ def list_vehicles(
         .skip((page - 1) * pageSize)
         .limit(pageSize)
     )
-    vehicles = [{"vin": d["_id"], **d["attributes"]} for d in docs]
+    vehicles = [dict(d["attributes"]) for d in docs]
     return {"page": page, "pageSize": pageSize, "totalCount": total, "vehicles": vehicles}
 
 
@@ -199,7 +216,174 @@ def search_vehicles(vin: str, tenant: str, role: str, limit: int = Query(10, ge=
         {"$limit": limit},
         {"$project": {"attributes": 1}},
     ]))
-    return {"vehicles": [{"vin": r["_id"], **r["attributes"]} for r in results]}
+    # No explicit assetType filter needed here -- only vehicle docs have an
+    # attributes.vin field at all, so the autocomplete match already excludes
+    # ev_charger/e_bike docs naturally.
+    return {"vehicles": [dict(r["attributes"]) for r in results]}
+
+
+# Fields an authenticated caller is allowed to edit via PATCH. Deliberately
+# excludes _id/vin, model, tenantIds, and segmentAssignments -- those change
+# the document's identity or authorization shape and need dedicated
+# operations (tenant transfer = notebook Part J's transaction pattern;
+# re-segmenting = its own move operation), not a generic field-level PATCH.
+EDITABLE_FIELDS = {"trim", "color", "chargingStatus", "assetGroup", "stateOfCharge",
+                   "distanceToEmptyMiles", "mileage", "vehicleSpeed", "hvBatterySOH"}
+
+
+class VehicleUpdate(BaseModel):
+    trim: Optional[str] = None
+    color: Optional[str] = None
+    chargingStatus: Optional[str] = None
+    assetGroup: Optional[str] = None
+    stateOfCharge: Optional[int] = None
+    distanceToEmptyMiles: Optional[int] = None
+    mileage: Optional[int] = None
+    vehicleSpeed: Optional[int] = None
+    hvBatterySOH: Optional[float] = None
+
+
+class VehicleCreate(BaseModel):
+    tenant: str
+    role: str  # must be a role actually granted somewhere in tenant's segment tree
+    model: str  # "R1T" | "R1S" | "RPV"
+    segmentId: str  # a leaf segment in the tenant's own hierarchy (see /segments/tree)
+    trim: Optional[str] = None
+    color: str = "Rivian Blue"
+    assetGroup: str = "Depot Standby"
+
+
+def _get_authorized_vehicle_or_404(vin: str, tenant: str, role: str) -> dict:
+    """Shared auth check for the single-vehicle endpoints: 404 (not just
+    403) for both "doesn't exist" and "exists but you can't see it" --
+    consistent with not revealing cross-tenant existence, same principle
+    REQ-01's authorization query already enforces for list/search.
+
+    Looks up by `attributes.vin` (the real vehicle VIN, what's displayed
+    and clicked in the frontend), NOT the document's `_id` -- those are
+    different values in this schema (`_id` is an internal doc key, e.g.
+    `VIN_SCALE_000001`; `attributes.vin` is the vehicle's actual VIN, e.g.
+    `7FCEHEB...`). Getting this wrong was a real bug caught by testing the
+    detail-view click-through, not by code review: GET/PATCH/DELETE all
+    404'd on every vehicle until this was fixed."""
+    query = {"attributes.vin": vin, **auth_filter(tenant, role)}
+    doc = db.assets.find_one(query)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"Vehicle '{vin}' not found or not authorized for this tenant/role")
+    return doc
+
+
+@app.get("/vehicles/{vin}")
+def get_vehicle(vin: str, tenant: str, role: str):
+    """Full detail view for a single vehicle -- what clicking a VIN in the
+    reference UI opens. Includes every segment assignment (so a multi-tenant
+    vehicle's placement in *each* tenant's hierarchy is visible, not just the
+    caller's), plus its tenant-transfer history."""
+    doc = _get_authorized_vehicle_or_404(vin, tenant, role)
+    history = list(db.tenant_transfer_events.find({"assetId": doc["_id"]}, {"_id": 0}).sort("timestamp", -1))
+    return {
+        "vin": vin,
+        "assetId": doc["_id"],
+        "schemaVersion": doc.get("schemaVersion"),
+        "tenantIds": doc["tenantIds"],
+        "attributes": doc["attributes"],
+        "segmentAssignments": doc["segmentAssignments"],
+        "transferHistory": history,
+    }
+
+
+@app.patch("/vehicles/{vin}")
+def update_vehicle(vin: str, tenant: str, role: str, update: VehicleUpdate):
+    """Update a subset of attribute fields (Update, in CRUD terms). Requires
+    the same tenant+role authorization as reading it -- there's no separate
+    "read-only vs. read-write" role distinction in this POC's simplified
+    auth model."""
+    doc = _get_authorized_vehicle_or_404(vin, tenant, role)
+    changes = {f"attributes.{k}": v for k, v in update.model_dump(exclude_none=True).items()}
+    if not changes:
+        raise HTTPException(status_code=400, detail="No editable fields provided")
+    db.assets.update_one({"_id": doc["_id"]}, {"$set": changes})
+    return get_vehicle(vin, tenant, role)
+
+
+@app.delete("/vehicles/{vin}")
+def delete_vehicle(vin: str, tenant: str, role: str):
+    """Delete a vehicle (Delete, in CRUD terms). This is a real hard delete
+    for POC simplicity -- a production fleet system would more likely
+    soft-delete (a `status: "decommissioned"` field, filtered out of normal
+    queries but retained for audit/compliance) rather than actually remove
+    the document, especially given `tenant_transfer_events` already
+    establishes the pattern of keeping an audit trail for lifecycle
+    changes. Noted here rather than implemented, to keep this endpoint's
+    behavior unambiguous for the demo."""
+    doc = _get_authorized_vehicle_or_404(vin, tenant, role)
+    db.assets.delete_one({"_id": doc["_id"]})
+    return {"deleted": vin}
+
+
+@app.post("/vehicles", status_code=201)
+def create_vehicle(body: VehicleCreate):
+    """Create a new vehicle (Create, in CRUD terms). Builds the same
+    schema shape as scripts/generate_fleet_data.py: a rivian_oem
+    segmentAssignment (by vehicle line) plus the owning tenant's
+    segmentAssignment (computed via topology.compute_assignment, so
+    authorizedRolesOrTeams is derived the same way everywhere in this
+    project, not hand-set here)."""
+    if body.model not in MODEL_TO_RIVIAN_LINE_SEGMENT:
+        raise HTTPException(status_code=400, detail=f"model must be one of {list(MODEL_TO_RIVIAN_LINE_SEGMENT)}")
+
+    tenant_roles = db.asset_segments.distinct("grantedRoles", {"tenantId": body.tenant})
+    if body.role not in tenant_roles:
+        raise HTTPException(status_code=403, detail=f"role '{body.role}' is not granted anywhere in tenant '{body.tenant}'")
+
+    segment = db.asset_segments.find_one({"_id": body.segmentId, "tenantId": body.tenant})
+    if not segment:
+        raise HTTPException(status_code=404, detail=f"segment '{body.segmentId}' not found for tenant '{body.tenant}'")
+
+    segments_by_id = {s["_id"]: s for s in db.asset_segments.find({})}
+    tenant_assignment = compute_assignment(body.tenant, body.segmentId, segments_by_id)
+    rivian_assignment = compute_assignment("rivian_oem", MODEL_TO_RIVIAN_LINE_SEGMENT[body.model], segments_by_id)
+
+    # verify the creating role can actually see the segment it's assigning into
+    if body.role not in tenant_assignment["authorizedRolesOrTeams"]:
+        raise HTTPException(status_code=403,
+                             detail=f"role '{body.role}' is not authorized for segment '{body.segmentId}'")
+
+    # _id is an internal document key (matches the "VIN_API_..." / "VIN_SCALE_..."
+    # convention used elsewhere in this project); attributes.vin is the
+    # realistic-looking VIN a real system would actually assign and that
+    # every other lookup in this API (GET/PATCH/DELETE, search) uses.
+    asset_id = "VIN_API_" + "".join(random.choices(string.ascii_uppercase + string.digits, k=10))
+    vin = "7FCEHEB" + "".join(random.choices(string.ascii_uppercase + string.digits, k=10))
+    trim_defaults = {"R1T": "Adventure", "R1S": "Adventure", "RPV": "EDV-500"}
+    battery_defaults = {"R1T": 135, "R1S": 149, "RPV": 118}
+    doc = {
+        "_id": asset_id,
+        "schemaVersion": SCHEMA_VERSION,
+        "tenantIds": ["rivian_oem", body.tenant],
+        "assetType": "vehicle",
+        "attributes": {
+            "make": "RIVIAN",
+            "model": body.model,
+            "trim": body.trim or trim_defaults[body.model],
+            "color": body.color,
+            "vin": vin,
+            "year": datetime.now(timezone.utc).year,
+            "firmwareVersion": "v2026.12.4",
+            "batteryCapacityKw": battery_defaults[body.model],
+            "mileage": 0,
+            "stateOfCharge": 100,
+            "distanceToEmptyMiles": {"R1T": 350, "R1S": 340, "RPV": 165}[body.model],
+            "chargingStatus": "Charging Complete",
+            "vehicleSpeed": 0,
+            "hvBatterySOH": 100.0,
+            "assetGroup": body.assetGroup,
+        },
+        "segmentAssignments": [rivian_assignment, tenant_assignment],
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    db.assets.insert_one(doc)
+    return get_vehicle(vin, body.tenant, body.role)
 
 
 # Categorical facets: field name -> attributes.<path>
@@ -259,7 +443,10 @@ def segment_tree(tenant: str):
         raise HTTPException(status_code=404, detail=f"No segments found for tenant '{tenant}'")
 
     counts = list(db.assets.aggregate([
-        {"$match": {"segmentAssignments.tenantId": tenant}},
+        # assetType filter matters here too -- ev_charger/e_bike docs also
+        # carry segmentAssignments for acme_fleet_corp/globex_logistics, and
+        # this endpoint's counts are explicitly labeled "vehicleCount".
+        {"$match": {"assetType": "vehicle", "segmentAssignments.tenantId": tenant}},
         {"$unwind": "$segmentAssignments"},
         {"$match": {"segmentAssignments.tenantId": tenant}},
         {"$unwind": "$segmentAssignments.ancestorSegments"},

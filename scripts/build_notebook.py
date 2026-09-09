@@ -385,6 +385,48 @@ print("Created operational index: segment_auth_idx")
 db.assets.create_index([("tenantIds", ASCENDING)], name="tenant_ids_idx")
 print("Created index: tenant_ids_idx (simple tenant-membership lookups, kept separate to avoid the parallel-arrays restriction above)")""")
 
+md(r"""### C1c. Unique index on VIN
+
+A real VIN is a legally unique identifier -- nothing in this schema enforced
+that until now. `api/main.py`'s vehicle-detail/update/delete endpoints look
+vehicles up by `attributes.vin` (the real VIN), not `_id` (an internal
+document key that happens to look similar, e.g. `VIN_SCALE_000001` --
+getting this distinction wrong was a real bug caught by testing the
+frontend's click-through-to-detail flow, not by code review).
+
+Partial (`assetType: "vehicle"` only), since `ev_charger`/`e_bike` docs
+don't have a `vin` field at all -- without the partial filter, a plain
+unique index would need every non-vehicle document to also satisfy the
+uniqueness constraint on a field they don't have.""")
+
+code(r"""db.assets.create_index(
+    [("attributes.vin", ASCENDING)],
+    name="vin_unique_idx",
+    unique=True,
+    partialFilterExpression={"assetType": "vehicle"},
+)
+print("Created unique index: vin_unique_idx (partial, assetType=vehicle only)")
+
+# Prove it live: try to insert a second vehicle with an already-used VIN.
+existing_vin = db.assets.find_one({"assetType": "vehicle"})["attributes"]["vin"]
+try:
+    db.assets.insert_one({
+        "_id": "VIN_DUPLICATE_TEST", "schemaVersion": 2, "tenantIds": ["rivian_oem"],
+        "assetType": "vehicle", "attributes": {"vin": existing_vin, "model": "R1T"},
+        "segmentAssignments": [],
+    })
+    print("Insert succeeded (unexpected)")
+except OperationFailure as e:
+    print(f"Duplicate VIN correctly rejected: {e}")
+
+# Confirm non-vehicle docs (no vin field) are unaffected by the partial index.
+db.assets.insert_many([
+    {"_id": "TEST_NO_VIN_1", "assetType": "ev_charger", "attributes": {}, "tenantIds": [], "segmentAssignments": []},
+    {"_id": "TEST_NO_VIN_2", "assetType": "ev_charger", "attributes": {}, "tenantIds": [], "segmentAssignments": []},
+])
+print("Two ev_charger docs with no vin field both inserted fine (partial index correctly excludes them)")
+db.assets.delete_many({"_id": {"$in": ["TEST_NO_VIN_1", "TEST_NO_VIN_2"]}})""")
+
 md(r"""### C1a-note. Why this index has only 2 fields, not 3
 
 An earlier version of this index had a third trailing field,

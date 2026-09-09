@@ -95,6 +95,23 @@ def main() -> None:
     # all") that don't need segment context. Kept out of the compound index
     # above specifically to avoid the parallel-arrays restriction.
     coll.create_index([("tenantIds", ASCENDING)], name="tenant_ids_idx")
+
+    # 1a2. Unique index on attributes.vin -- a real VIN is a legally unique
+    # identifier, and api/main.py's detail/update/delete endpoints look
+    # vehicles up by it (not by _id, which is a separate internal doc key).
+    # Partial (only assetType == "vehicle") since ev_charger/e_bike docs
+    # don't have a vin field at all -- a plain unique index would otherwise
+    # need every non-vehicle doc to either omit the field consistently
+    # (sparse) or collide on missing-value uniqueness; a partial filter
+    # expression is the more explicit, modern way to say "this constraint
+    # only applies to vehicles."
+    coll.create_index(
+        [("attributes.vin", ASCENDING)],
+        name="vin_unique_idx",
+        unique=True,
+        partialFilterExpression={"assetType": "vehicle"},
+    )
+    print("Created unique index: vin_unique_idx (partial, assetType=vehicle only)")
     print("Created index: tenant_ids_idx")
 
     # 1b. Wildcard index on the polymorphic attributes sub-document (Attribute

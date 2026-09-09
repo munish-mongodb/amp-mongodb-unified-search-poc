@@ -93,6 +93,22 @@
 
   .footer-note { margin-top: 22px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
   code { background: #f1f2f4; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+
+  /* --- vehicle detail / add-vehicle forms --- */
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; margin-bottom: 16px; }
+  .field { display: flex; flex-direction: column; gap: 3px; }
+  .field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .field input, .field select { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+  .field.readonly input { background: var(--bg); color: var(--muted); }
+  .detail-section-title { font-size: 12.5px; font-weight: 600; margin: 18px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .assignment-row { font-size: 12.5px; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+  .assignment-row .roles { color: var(--muted); }
+  .history-row { font-size: 12px; color: var(--muted); padding: 4px 0; border-bottom: 1px solid #f0f1f4; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+  .btn-danger { background: #d64545; color: #fff; border-color: #d64545; }
+  .btn-danger:hover { background: #b73838; }
+  .inline-error { color: #b73838; font-size: 12.5px; margin-top: 8px; }
+  .inline-success { color: #1e7e34; font-size: 12.5px; margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -138,6 +154,7 @@
     <div class="toolbar2">
       <button class="btn" id="filtersBtn">&#9776; Filters</button>
       <div class="spacer"></div>
+      <button class="btn btn-primary" id="addVehicleBtn">+ Add Vehicle</button>
       <button class="btn" disabled title="Not implemented in this POC">Export</button>
     </div>
 
@@ -180,6 +197,40 @@
     <div class="panel-header"><h2>Fleet Selection</h2><button class="close-x" id="closeFleet">&times;</button></div>
     <p style="font-size:12.5px;color:var(--muted);margin-top:-8px">Select a node to scope the vehicle list to that subtree (rollup counts computed live via MongoDB aggregation).</p>
     <div id="treeContainer"></div>
+  </div>
+</div>
+
+<!-- Vehicle detail / edit / delete modal -->
+<div class="overlay" id="detailOverlay">
+  <div class="modal" style="width:640px">
+    <div class="panel-header"><h2 id="detailVin">Vehicle</h2><button class="close-x" id="closeDetail">&times;</button></div>
+    <div id="detailBody">Loading...</div>
+  </div>
+</div>
+
+<!-- Add vehicle modal -->
+<div class="overlay" id="addOverlay">
+  <div class="modal" style="width:480px">
+    <div class="panel-header"><h2>Add Vehicle</h2><button class="close-x" id="closeAdd">&times;</button></div>
+    <p style="font-size:12.5px;color:var(--muted);margin-top:-8px">Creates a real document with correctly computed segment assignments (same logic as the data generator) -- POST /vehicles.</p>
+    <div class="detail-grid">
+      <div class="field"><label>Model</label>
+        <select id="addModel"><option value="R1T">R1T</option><option value="R1S">R1S</option><option value="RPV" selected>RPV</option></select>
+      </div>
+      <div class="field"><label>Assign to Segment</label><select id="addSegment"></select></div>
+      <div class="field"><label>Color</label><input id="addColor" value="Rivian Blue"></div>
+      <div class="field"><label>Asset Group</label>
+        <select id="addAssetGroup">
+          <option>Line Haul</option><option>Last Mile</option><option selected>Depot Standby</option>
+          <option>Rental Pool</option><option>Reserve Fleet</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="submitAdd">Create Vehicle</button>
+      <button class="btn" id="cancelAdd">Cancel</button>
+    </div>
+    <div id="addMessage"></div>
   </div>
 </div>
 
@@ -247,7 +298,7 @@ function renderTable(vehicles) {
     const tr = document.createElement("tr");
     const name = (v.vin || "").slice(-6);
     tr.innerHTML = `
-      <td class="vin-cell"><a href="#">${v.vin}</a><div class="vin-sub">&#128267; ${v.distanceToEmptyMiles ?? "-"} mi / ${v.stateOfCharge ?? "-"}%</div></td>
+      <td class="vin-cell"><a href="#" class="vin-link" data-vin="${v.vin}">${v.vin}</a><div class="vin-sub">&#128267; ${v.distanceToEmptyMiles ?? "-"} mi / ${v.stateOfCharge ?? "-"}%</div></td>
       <td>${name}</td>
       <td>${v.distanceToEmptyMiles ?? "-"} mi</td>
       <td><span class="badge ${badgeClass(v.chargingStatus)}">${v.chargingStatus ?? "-"}</span></td>
@@ -260,6 +311,15 @@ function renderTable(vehicles) {
     body.appendChild(tr);
   }
 }
+
+// Event delegation -- rows are rebuilt on every render, so bind once on
+// the (stable) tbody container rather than re-binding per row.
+document.getElementById("tableBody").addEventListener("click", e => {
+  const link = e.target.closest(".vin-link");
+  if (!link) return;
+  e.preventDefault();
+  openVehicleDetail(link.dataset.vin);
+});
 
 // ---------- facets / filter drawer ----------
 // Categorical facets: API field name -> display label. Matches
@@ -415,6 +475,164 @@ async function loadTree() {
   data.tree.forEach(root => container.appendChild(renderNode(root, 0)));
 }
 
+// ---------- vehicle detail (Read / Update / Delete) ----------
+const EDITABLE_FIELDS = [
+  ["trim", "text"], ["color", "text"], ["assetGroup", "text"],
+  ["chargingStatus", "select", ["Ready to Charge", "Charging Complete", "Waiting on Charger", "Charging", "Not Charging"]],
+  ["stateOfCharge", "number"], ["distanceToEmptyMiles", "number"], ["mileage", "number"],
+  ["vehicleSpeed", "number"], ["hvBatterySOH", "number"],
+];
+
+async function openVehicleDetail(vin) {
+  document.getElementById("detailOverlay").classList.add("open");
+  document.getElementById("detailVin").textContent = vin;
+  document.getElementById("detailBody").innerHTML = "Loading...";
+  try {
+    await renderVehicleDetail(vin);
+  } catch (e) {
+    document.getElementById("detailBody").innerHTML = `<div class="inline-error">${e.message}</div>`;
+  }
+}
+
+async function renderVehicleDetail(vin) {
+  const data = await api(`/vehicles/${encodeURIComponent(vin)}`, { tenant: state.tenant, role: state.role });
+  const body = document.getElementById("detailBody");
+
+  const fieldsHtml = EDITABLE_FIELDS.map(([key, type, options]) => {
+    const val = data.attributes[key] ?? "";
+    if (type === "select") {
+      const opts = options.map(o => `<option ${o === val ? "selected" : ""}>${o}</option>`).join("");
+      return `<div class="field"><label>${key}</label><select data-field="${key}">${opts}</select></div>`;
+    }
+    return `<div class="field"><label>${key}</label><input data-field="${key}" type="${type}" value="${val}"></div>`;
+  }).join("");
+
+  const readonlyHtml = ["make", "model", "year", "batteryCapacityKw", "firmwareVersion"].map(key =>
+    `<div class="field readonly"><label>${key}</label><input value="${data.attributes[key] ?? "-"}" disabled></div>`
+  ).join("");
+
+  const assignmentsHtml = data.segmentAssignments.map(sa => `
+    <div class="assignment-row">
+      <b>${sa.tenantId}</b> -> ${sa.segmentId}<br>
+      <span class="roles">roles: ${sa.authorizedRolesOrTeams.join(", ")}</span>
+    </div>`).join("");
+
+  const historyHtml = data.transferHistory.length
+    ? data.transferHistory.map(h => `<div class="history-row">${h.timestamp} -- ${h.fromTenantId ?? "(new)"} -> ${h.toTenantId} (${h.eventType}, by ${h.initiatedBy})</div>`).join("")
+    : `<div class="history-row">No tenant transfers recorded for this vehicle.</div>`;
+
+  body.innerHTML = `
+    <div class="detail-section-title">Identity</div>
+    <div class="detail-grid">${readonlyHtml}</div>
+    <div class="detail-section-title">Editable attributes</div>
+    <div class="detail-grid">${fieldsHtml}</div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" id="saveVehicleBtn">Save Changes</button>
+      <button class="btn btn-danger" id="deleteVehicleBtn">Delete Vehicle</button>
+    </div>
+    <div id="detailMessage"></div>
+    <div class="detail-section-title">Segment assignments (tenantIds: ${data.tenantIds.join(", ")})</div>
+    ${assignmentsHtml}
+    <div class="detail-section-title">Tenant transfer history</div>
+    ${historyHtml}
+  `;
+
+  document.getElementById("saveVehicleBtn").addEventListener("click", () => saveVehicleEdit(vin));
+  document.getElementById("deleteVehicleBtn").addEventListener("click", () => deleteVehicleConfirm(vin));
+}
+
+async function saveVehicleEdit(vin) {
+  const updates = {};
+  document.querySelectorAll("#detailBody [data-field]").forEach(el => {
+    const key = el.dataset.field;
+    const raw = el.value;
+    updates[key] = el.type === "number" ? Number(raw) : raw;
+  });
+  const msg = document.getElementById("detailMessage");
+  try {
+    const url = new URL(`/vehicles/${encodeURIComponent(vin)}`, window.location.origin);
+    url.searchParams.set("tenant", state.tenant);
+    url.searchParams.set("role", state.role);
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    msg.className = "inline-success";
+    msg.textContent = "Saved.";
+    loadVehicles(); loadFacets();
+  } catch (e) {
+    msg.className = "inline-error";
+    msg.textContent = "Save failed: " + e.message;
+  }
+}
+
+async function deleteVehicleConfirm(vin) {
+  if (!confirm(`Delete vehicle ${vin}? This cannot be undone.`)) return;
+  const url = new URL(`/vehicles/${encodeURIComponent(vin)}`, window.location.origin);
+  url.searchParams.set("tenant", state.tenant);
+  url.searchParams.set("role", state.role);
+  const res = await fetch(url, { method: "DELETE" });
+  if (res.ok) {
+    document.getElementById("detailOverlay").classList.remove("open");
+    loadVehicles(); loadFacets();
+  } else {
+    document.getElementById("detailMessage").className = "inline-error";
+    document.getElementById("detailMessage").textContent = "Delete failed: " + await res.text();
+  }
+}
+
+// ---------- add vehicle (Create) ----------
+async function openAddVehicleForm() {
+  document.getElementById("addOverlay").classList.add("open");
+  document.getElementById("addMessage").innerHTML = "";
+  const data = await api("/segments/tree", { tenant: state.tenant });
+  const leaves = [];
+  function collectLeaves(node) {
+    if (!node.children || node.children.length === 0) leaves.push(node);
+    else node.children.forEach(collectLeaves);
+  }
+  data.tree.forEach(collectLeaves);
+  const sel = document.getElementById("addSegment");
+  sel.innerHTML = leaves.map(l => `<option value="${l.id}">${l.name}</option>`).join("");
+}
+
+async function submitAddVehicle() {
+  const msg = document.getElementById("addMessage");
+  const body = {
+    tenant: state.tenant,
+    role: state.role,
+    model: document.getElementById("addModel").value,
+    segmentId: document.getElementById("addSegment").value,
+    color: document.getElementById("addColor").value,
+    assetGroup: document.getElementById("addAssetGroup").value,
+  };
+  try {
+    const res = await fetch(new URL("/vehicles", window.location.origin), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const created = await res.json();
+    msg.className = "inline-success";
+    msg.textContent = `Created ${created.vin}.`;
+    state.page = 1;
+    loadVehicles(); loadFacets();
+    setTimeout(() => document.getElementById("addOverlay").classList.remove("open"), 900);
+  } catch (e) {
+    msg.className = "inline-error";
+    msg.textContent = "Create failed: " + e.message;
+  }
+}
+
+document.getElementById("closeDetail").addEventListener("click", () => document.getElementById("detailOverlay").classList.remove("open"));
+document.getElementById("addVehicleBtn").addEventListener("click", openAddVehicleForm);
+document.getElementById("closeAdd").addEventListener("click", () => document.getElementById("addOverlay").classList.remove("open"));
+document.getElementById("cancelAdd").addEventListener("click", () => document.getElementById("addOverlay").classList.remove("open"));
+document.getElementById("submitAdd").addEventListener("click", submitAddVehicle);
+
 // ---------- tenant / role setup ----------
 async function loadTenants() {
   const data = await api("/tenants", {});
@@ -472,7 +690,8 @@ document.getElementById("searchBox").addEventListener("input", e => {
     loadVehicles();
   }, 300);
 });
-[document.getElementById("filterOverlay"), document.getElementById("fleetOverlay")].forEach(ov => {
+[document.getElementById("filterOverlay"), document.getElementById("fleetOverlay"),
+ document.getElementById("detailOverlay"), document.getElementById("addOverlay")].forEach(ov => {
   ov.addEventListener("click", e => { if (e.target === ov) ov.classList.remove("open"); });
 });
 

@@ -71,6 +71,7 @@ each relationship is proven live.
 | REQ-08 | Hierarchical role-grant propagation at scale | Notebook Part I | Granting a role at `seg_california` propagated to 6,600 descendant assets via one `update_many` + `arrayFilters` call in ~1.4s -- the honest cost side of precomputing `authorizedRolesOrTeams` |
 | REQ-09 | Tenant transfer as an ACID transaction | Notebook Part J | `tenantIds` update + segment reassignment + `tenant_transfer_events` log entry committed atomically in one multi-document transaction |
 | REQ-10 | Faceted search backend (filter panel + fleet tree) | Notebook Parts K/L/M, `api/main.py`, `frontend/index.html` | `$facet` aggregation (numeric + categorical buckets), Atlas Search `autocomplete` VIN substring search, and a segment-tree rollup-count aggregation -- wired behind a FastAPI service and a real clickable UI, verified end-to-end with a headless-browser test, not just notebook cells |
+| REQ-11 | Single-vehicle CRUD | `api/main.py`, `frontend/index.html` | `GET/PATCH/DELETE /vehicles/{vin}` + `POST /vehicles`, wired into the UI (click a VIN -> detail drawer with edit/delete; "+ Add Vehicle" -> create form). Create reuses `topology.compute_assignment` so a newly created vehicle's `segmentAssignments` are computed identically to the bulk generator, not hand-set. All four operations enforce the same tenant+role authorization as list/search (a 404, not just a 403, for both "doesn't exist" and "exists but you're not authorized"). Found and fixed 3 real bugs building this -- see "Data layer audit" below |
 
 ## Why `asset_segments` and `assets` are separate collections
 
@@ -193,6 +194,30 @@ C5, D3).
    This isn't clearly documented anywhere; found by bisecting a hybrid
    search query that returned 10 results with a plain `$elemMatch` `find()`
    but 0 results through `$search`.
+3. **`_id` and the vehicle's real VIN are different values, and confusing
+   them broke every single-vehicle endpoint.** `assets._id` is an internal
+   document key (`VIN_SCALE_000001`, `VIN_RIVIAN_001`); `attributes.vin` is
+   the vehicle's actual VIN (`7FCEHEB...`), a separate value shown in the
+   UI and clicked by the user. The first version of
+   `GET/PATCH/DELETE /vehicles/{vin}` looked up by `_id` -- every one of
+   them 404'd on every vehicle, since the value the frontend actually sends
+   is `attributes.vin`. Caught immediately by testing the click-through
+   flow with Playwright (not by code review, which didn't flag it because
+   both fields are called "vin"-ish and the list/search endpoints already
+   happened to display `attributes.vin` correctly via an unrelated dict-
+   unpacking quirk). Fixed by making every single-vehicle endpoint query
+   `attributes.vin` explicitly, and added a partial unique index on it
+   (see below) since nothing previously enforced VIN uniqueness at all.
+4. **`/vehicles` had no `assetType` filter, so it silently returned
+   `ev_charger`/`e_bike` documents mixed into the vehicle table.** `assets`
+   is polymorphic (REQ-02); the "Vehicle Tracker" endpoint needs to scope
+   to `assetType: "vehicle"` explicitly, not rely on every doc happening to
+   look like a vehicle. Found the same way as #3 -- clicking a charger's
+   "VIN" (actually its `_id`, since chargers have no `attributes.vin`)
+   404'd. Fixed by adding the filter to the shared `auth_filter()` helper
+   so every endpoint built on it (list, facets, search, detail/update/
+   delete) inherits it in one place, plus the segment-tree rollup-count
+   aggregation (which has its own separate pipeline).
 
 ### Optimizations found by measuring, not guessing
 
@@ -235,6 +260,16 @@ C5, D3).
    constant in `topology.py`, applied via `materialize_segment_tree()` and
    the `TENANTS` list, so it can't drift between the programmatic and
    curated paths again.
+7. **VIN uniqueness was never enforced.** A real VIN is a legally unique
+   identifier; nothing in this schema said so. Added a **partial unique
+   index** on `attributes.vin` (`partialFilterExpression: {assetType:
+   "vehicle"}`) -- partial because `ev_charger`/`e_bike` docs don't have a
+   `vin` field at all, so a plain unique index would need every non-vehicle
+   document to somehow also satisfy a constraint on a field it doesn't
+   have. Verified live: inserting a second vehicle with an already-used VIN
+   is correctly rejected (`E11000 duplicate key error`); two `ev_charger`
+   docs with no `vin` field at all both insert fine, confirming the
+   partial filter correctly excludes them from the constraint.
 
 ### Patterns already correctly applied, confirmed on review
 
@@ -345,6 +380,14 @@ curl "http://localhost:8000/vehicles?tenant=amazon_logistics&role=role_fleet_adm
 curl "http://localhost:8000/facets?tenant=amazon_logistics&role=role_fleet_admin"
 curl "http://localhost:8000/segments/tree?tenant=amazon_logistics"
 curl "http://localhost:8000/vehicles/search?vin=6493&tenant=amazon_logistics&role=role_fleet_admin"
+
+# Single-vehicle CRUD (REQ-11) -- also wired into the UI (click a VIN)
+curl "http://localhost:8000/vehicles/7FCEHEB.../?tenant=amazon_logistics&role=role_fleet_admin"   # Read
+curl -X PATCH "http://localhost:8000/vehicles/7FCEHEB...?tenant=amazon_logistics&role=role_fleet_admin" \
+  -H "Content-Type: application/json" -d '{"chargingStatus": "Ready to Charge", "mileage": 15000}'
+curl -X DELETE "http://localhost:8000/vehicles/7FCEHEB...?tenant=amazon_logistics&role=role_fleet_admin"
+curl -X POST "http://localhost:8000/vehicles" -H "Content-Type: application/json" \
+  -d '{"tenant":"amazon_logistics","role":"role_fleet_admin","model":"RPV","segmentId":"seg_amazon_logistics_region0_depot1_team0"}'
 ```
 
 `tenant`/`role` are plain query params standing in for what a real
@@ -363,6 +406,15 @@ generated-scale tenants -- same role name, inconsistent meaning, which
 showed up as "1 vehicle" instead of "10,000+" when switching tenants in
 the UI. Fixed by granting `role_fleet_admin` at the curated tenants' global
 root too, then recomputing every affected `authorizedRolesOrTeams` closure.
+
+The CRUD flow (click VIN -> read detail -> edit + save -> reopen to confirm
+persistence -> delete -> confirm it's gone from search -> create a new one)
+was verified the same way, end-to-end with Playwright, and caught 3 more
+real bugs -- see "Data layer audit" above for what they were and how they
+were fixed. `POST /vehicles` enforces the same authorization a read would:
+the creating role must actually be granted (directly or via ancestor
+segments) for the segment the new vehicle is being assigned into, not just
+"granted somewhere in the tenant."
 
 ## Data model notes
 
