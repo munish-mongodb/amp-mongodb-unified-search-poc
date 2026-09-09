@@ -1,20 +1,34 @@
 [
   {
     "_id": "VIN_RIVIAN_001",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1T",
       "color": "Rivian Blue",
       "vin": "1FTFW1E81MF100001",
       "firmwareVersion": "v2026.12.4",
-      "batteryCapacityKw": 135
+      "batteryCapacityKw": 135,
+      "trim": "Adventure",
+      "year": 2026,
+      "mileage": 15937,
+      "stateOfCharge": 60,
+      "distanceToEmptyMiles": 210,
+      "chargingStatus": "Ready to Charge",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 92.5,
+      "assetGroup": "Depot Standby"
     },
     "unstructuredNotes": "DC fast charger cut out at 80% state of charge in San Jose station. High heat warning.",
+    "updatedAt": "2026-08-01T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_san_jose_team",
         "ancestorSegments": [
           "seg_global",
@@ -22,31 +36,56 @@
           "seg_california",
           "seg_california_north",
           "seg_san_jose_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_san_jose"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1t",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1t"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1t_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_san_jose",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-01T10:00:00Z"
+    ]
   },
   {
     "_id": "VIN_RIVIAN_002",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1S",
       "color": "Forest Green",
       "vin": "1FTFW1E81MF100002",
       "firmwareVersion": "v2026.12.4",
-      "batteryCapacityKw": 135
+      "batteryCapacityKw": 135,
+      "trim": "Explore",
+      "year": 2026,
+      "mileage": 22096,
+      "stateOfCharge": 46,
+      "distanceToEmptyMiles": 156,
+      "chargingStatus": "Ready to Charge",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 98.4,
+      "assetGroup": "Last Mile"
     },
     "unstructuredNotes": "Air suspension fault detected during highway cruising near Hayward.",
+    "updatedAt": "2026-08-02T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_hayward_team",
         "ancestorSegments": [
           "seg_global",
@@ -54,31 +93,56 @@
           "seg_california",
           "seg_california_north",
           "seg_hayward_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_hayward"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1s",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1s"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1s_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_hayward",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-02T10:00:00Z"
+    ]
   },
   {
     "_id": "VIN_RIVIAN_003",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1T",
       "color": "Rivian Blue",
       "vin": "1FTFW1E81MF100003",
       "firmwareVersion": "v2026.12.4",
-      "batteryCapacityKw": 135
+      "batteryCapacityKw": 135,
+      "trim": "Adventure",
+      "year": 2026,
+      "mileage": 17209,
+      "stateOfCharge": 42,
+      "distanceToEmptyMiles": 147,
+      "chargingStatus": "Charging",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 92.5,
+      "assetGroup": "Line Haul"
     },
     "unstructuredNotes": "Vehicle reported intermittent DC fast charging throttling under high ambient temperatures in Hayward depot.",
+    "updatedAt": "2026-08-03T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_hayward_team",
         "ancestorSegments": [
           "seg_global",
@@ -86,61 +150,111 @@
           "seg_california",
           "seg_california_north",
           "seg_hayward_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_hayward"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1t",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1t"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1t_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_hayward",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-03T10:00:00Z"
+    ]
   },
   {
     "_id": "VIN_RIVIAN_004",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1S",
       "color": "Rivian Blue",
       "vin": "1FTFW1E81MF100004",
       "firmwareVersion": "v2026.11.2",
-      "batteryCapacityKw": 149
+      "batteryCapacityKw": 149,
+      "trim": "Explore",
+      "year": 2026,
+      "mileage": 4936,
+      "stateOfCharge": 75,
+      "distanceToEmptyMiles": 255,
+      "chargingStatus": "Not Charging",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 92.9,
+      "assetGroup": "Last Mile"
     },
     "unstructuredNotes": "Battery pack management system reduces charge rate when cell temperatures exceed safe thresholds during supercharging sessions.",
+    "updatedAt": "2026-08-04T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_austin_team",
         "ancestorSegments": [
           "seg_global",
           "seg_texas",
           "seg_austin_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_texas",
+          "team_austin"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1s",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1s"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1s_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_austin",
-      "region_texas"
-    ],
-    "updatedAt": "2026-08-04T10:00:00Z"
+    ]
   },
   {
     "_id": "VIN_RIVIAN_005",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1T",
       "color": "Forest Green",
       "vin": "1FTFW1E81MF100005",
       "firmwareVersion": "v2026.12.4",
-      "batteryCapacityKw": 135
+      "batteryCapacityKw": 135,
+      "trim": "Launch Edition",
+      "year": 2026,
+      "mileage": 22103,
+      "stateOfCharge": 80,
+      "distanceToEmptyMiles": 280,
+      "chargingStatus": "Ready to Charge",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 96.0,
+      "assetGroup": "Rental Pool"
     },
     "unstructuredNotes": "Infotainment touchscreen freezes intermittently after software update.",
+    "updatedAt": "2026-08-05T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_san_jose_team",
         "ancestorSegments": [
           "seg_global",
@@ -148,19 +262,29 @@
           "seg_california",
           "seg_california_north",
           "seg_san_jose_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_san_jose"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1t",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1t"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1t_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_san_jose",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-05T10:00:00Z"
+    ]
   },
   {
     "_id": "CHARGER_EV_101",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "ev_charger",
     "attributes": {
       "maxKw": 350,
@@ -168,8 +292,13 @@
       "firmware": "v4.2.1"
     },
     "unstructuredNotes": "Cable cooling fan failure reported by telemetry. Connector overheats under sustained 350kW load.",
+    "updatedAt": "2026-08-06T10:00:00Z",
+    "tenantIds": [
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_san_jose_team",
         "ancestorSegments": [
           "seg_global",
@@ -177,19 +306,17 @@
           "seg_california",
           "seg_california_north",
           "seg_san_jose_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_san_jose"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_san_jose",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-06T10:00:00Z"
+    ]
   },
   {
     "_id": "CHARGER_EV_102",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "ev_charger",
     "attributes": {
       "maxKw": 150,
@@ -197,8 +324,13 @@
       "firmware": "v4.1.0"
     },
     "unstructuredNotes": "Payment terminal card reader unresponsive; unit offline for 2 hours.",
+    "updatedAt": "2026-08-07T10:00:00Z",
+    "tenantIds": [
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_hayward_team",
         "ancestorSegments": [
           "seg_global",
@@ -206,19 +338,17 @@
           "seg_california",
           "seg_california_north",
           "seg_hayward_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_hayward"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_hayward",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-07T10:00:00Z"
+    ]
   },
   {
     "_id": "CHARGER_EV_103",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "ev_charger",
     "attributes": {
       "maxKw": 350,
@@ -226,26 +356,29 @@
       "firmware": "v4.2.1"
     },
     "unstructuredNotes": "Thermal derating triggered on DC fast charger during peak summer demand, reducing max output from 350kW to 150kW.",
+    "updatedAt": "2026-08-08T10:00:00Z",
+    "tenantIds": [
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_austin_team",
         "ancestorSegments": [
           "seg_global",
           "seg_texas",
           "seg_austin_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_texas",
+          "team_austin"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_austin",
-      "region_texas"
-    ],
-    "updatedAt": "2026-08-08T10:00:00Z"
+    ]
   },
   {
     "_id": "EBIKE_001",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "e_bike",
     "attributes": {
       "make": "Rivian",
@@ -253,8 +386,13 @@
       "batteryWattHours": 500
     },
     "unstructuredNotes": "Rear derailleur misaligned after firmware update, shifting is inconsistent.",
+    "updatedAt": "2026-08-09T10:00:00Z",
+    "tenantIds": [
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_san_jose_team",
         "ancestorSegments": [
           "seg_global",
@@ -262,19 +400,17 @@
           "seg_california",
           "seg_california_north",
           "seg_san_jose_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_san_jose"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_san_jose",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-09T10:00:00Z"
+    ]
   },
   {
     "_id": "EBIKE_002",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "e_bike",
     "attributes": {
       "make": "Rivian",
@@ -282,8 +418,13 @@
       "batteryWattHours": 500
     },
     "unstructuredNotes": "Battery pack shows reduced range and warm-to-touch casing after rapid charge cycles in hot weather.",
+    "updatedAt": "2026-08-10T10:00:00Z",
+    "tenantIds": [
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_hayward_team",
         "ancestorSegments": [
           "seg_global",
@@ -291,31 +432,44 @@
           "seg_california",
           "seg_california_north",
           "seg_hayward_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_hayward"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_hayward",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-10T10:00:00Z"
+    ]
   },
   {
     "_id": "VIN_RIVIAN_006",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1T",
       "color": "Rivian Blue",
       "vin": "1FTFW1E81MF100006",
       "firmwareVersion": "v2026.12.4",
-      "batteryCapacityKw": 135
+      "batteryCapacityKw": 135,
+      "trim": "Adventure",
+      "year": 2026,
+      "mileage": 4526,
+      "stateOfCharge": 43,
+      "distanceToEmptyMiles": 150,
+      "chargingStatus": "Not Charging",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 98.0,
+      "assetGroup": "Reserve Fleet"
     },
     "unstructuredNotes": "Tire pressure monitoring system reports slow leak in rear left tire.",
+    "updatedAt": "2026-08-11T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_hayward_team",
         "ancestorSegments": [
           "seg_global",
@@ -323,49 +477,84 @@
           "seg_california",
           "seg_california_north",
           "seg_hayward_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_hayward"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1t",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1t"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1t_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_hayward",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-11T10:00:00Z"
+    ]
   },
   {
     "_id": "VIN_RIVIAN_007",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1S",
       "color": "Rivian Blue",
       "vin": "1FTFW1E81MF100007",
       "firmwareVersion": "v2026.12.4",
-      "batteryCapacityKw": 149
+      "batteryCapacityKw": 149,
+      "trim": "Adventure",
+      "year": 2026,
+      "mileage": 20717,
+      "stateOfCharge": 66,
+      "distanceToEmptyMiles": 224,
+      "chargingStatus": "Ready to Charge",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 96.0,
+      "assetGroup": "Depot Standby"
     },
     "unstructuredNotes": "Owner reports charging speed drops significantly on hot days when using public fast chargers.",
+    "updatedAt": "2026-08-12T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_california_north",
         "ancestorSegments": [
           "seg_global",
           "seg_us_west",
           "seg_california",
           "seg_california_north"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1s",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1s"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1s_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-12T10:00:00Z"
+    ]
   },
   {
     "_id": "CHARGER_EV_104",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "ev_charger",
     "attributes": {
       "maxKw": 150,
@@ -373,38 +562,56 @@
       "firmware": "v4.2.1"
     },
     "unstructuredNotes": "Firmware v4.2.1 rolled out fleet-wide; no reported issues.",
+    "updatedAt": "2026-08-13T10:00:00Z",
+    "tenantIds": [
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_austin_team",
         "ancestorSegments": [
           "seg_global",
           "seg_texas",
           "seg_austin_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_texas",
+          "team_austin"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_austin",
-      "region_texas"
-    ],
-    "updatedAt": "2026-08-13T10:00:00Z"
+    ]
   },
   {
     "_id": "VIN_RIVIAN_008",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1T",
       "color": "Silver",
       "vin": "1FTFW1E81MF100008",
       "firmwareVersion": "v2026.12.4",
-      "batteryCapacityKw": 135
+      "batteryCapacityKw": 135,
+      "trim": "Launch Edition",
+      "year": 2026,
+      "mileage": 8922,
+      "stateOfCharge": 92,
+      "distanceToEmptyMiles": 322,
+      "chargingStatus": "Ready to Charge",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 96.1,
+      "assetGroup": "Last Mile"
     },
     "unstructuredNotes": "Windshield wiper motor makes grinding noise in cold weather.",
+    "updatedAt": "2026-08-14T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_san_jose_team",
         "ancestorSegments": [
           "seg_global",
@@ -412,77 +619,135 @@
           "seg_california",
           "seg_california_north",
           "seg_san_jose_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_san_jose"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1t",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1t"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1t_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_san_jose",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-14T10:00:00Z"
+    ]
   },
   {
     "_id": "VIN_RIVIAN_009",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1S",
       "color": "Rivian Blue",
       "vin": "1FTFW1E81MF100009",
       "firmwareVersion": "v2026.12.4",
-      "batteryCapacityKw": 149
+      "batteryCapacityKw": 149,
+      "trim": "Adventure",
+      "year": 2026,
+      "mileage": 20948,
+      "stateOfCharge": 63,
+      "distanceToEmptyMiles": 214,
+      "chargingStatus": "Ready to Charge",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 96.0,
+      "assetGroup": "Depot Standby"
     },
     "unstructuredNotes": "Confidential recall candidate: potential battery cell thermal runaway risk flagged by engineering during fast-charge stress testing.",
+    "updatedAt": "2026-08-15T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
-        "segmentId": "seg_california_north",
+        "tenantId": "acme_fleet_corp",
+        "segmentId": "seg_ca_north_restricted",
         "ancestorSegments": [
           "seg_global",
-          "seg_us_west",
-          "seg_california",
-          "seg_california_north"
+          "seg_ca_north_restricted"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1s",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1s"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1s_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "role_fleet_admin"
-    ],
-    "updatedAt": "2026-08-15T10:00:00Z"
+    ]
   },
   {
     "_id": "VIN_GLOBEX_001",
-    "schemaVersion": 1,
-    "tenantId": "globex_logistics",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1T",
       "color": "Rivian Blue",
       "vin": "9GX00000000000001",
       "firmwareVersion": "v2026.12.4",
-      "batteryCapacityKw": 135
+      "batteryCapacityKw": 135,
+      "trim": "Explore",
+      "year": 2026,
+      "mileage": 25295,
+      "stateOfCharge": 53,
+      "distanceToEmptyMiles": 186,
+      "chargingStatus": "Not Charging",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 95.0,
+      "assetGroup": "Reserve Fleet"
     },
     "unstructuredNotes": "Battery thermal throttling detected during fast charging test.",
+    "updatedAt": "2026-08-16T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "globex_logistics"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "globex_logistics",
         "segmentId": "seg_globex_midwest",
         "ancestorSegments": [
           "seg_globex_global",
           "seg_globex_midwest"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1t",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1t"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1t_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-16T10:00:00Z"
+    ]
   },
   {
     "_id": "EBIKE_003",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "e_bike",
     "attributes": {
       "make": "Rivian",
@@ -490,26 +755,29 @@
       "batteryWattHours": 500
     },
     "unstructuredNotes": "Bluetooth pairing with companion app fails intermittently.",
+    "updatedAt": "2026-08-17T10:00:00Z",
+    "tenantIds": [
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_austin_team",
         "ancestorSegments": [
           "seg_global",
           "seg_texas",
           "seg_austin_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_texas",
+          "team_austin"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_austin",
-      "region_texas"
-    ],
-    "updatedAt": "2026-08-17T10:00:00Z"
+    ]
   },
   {
     "_id": "CHARGER_EV_105",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "ev_charger",
     "attributes": {
       "maxKw": 150,
@@ -517,8 +785,13 @@
       "firmware": "v4.1.0"
     },
     "unstructuredNotes": "Ground fault interrupter tripped twice this week during rainy conditions.",
+    "updatedAt": "2026-08-18T10:00:00Z",
+    "tenantIds": [
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_hayward_team",
         "ancestorSegments": [
           "seg_global",
@@ -526,31 +799,44 @@
           "seg_california",
           "seg_california_north",
           "seg_hayward_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_hayward"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_hayward",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-18T10:00:00Z"
+    ]
   },
   {
     "_id": "VIN_RIVIAN_010",
-    "schemaVersion": 1,
-    "tenantId": "acme_fleet_corp",
+    "schemaVersion": 2,
     "assetType": "vehicle",
     "attributes": {
-      "make": "Rivian",
+      "make": "RIVIAN",
       "model": "R1T",
       "color": "Rivian Blue",
       "vin": "1FTFW1E81MF100010",
       "firmwareVersion": "v2026.12.4",
-      "batteryCapacityKw": 135
+      "batteryCapacityKw": 135,
+      "trim": "Launch Edition",
+      "year": 2026,
+      "mileage": 17849,
+      "stateOfCharge": 69,
+      "distanceToEmptyMiles": 242,
+      "chargingStatus": "Waiting on Charger",
+      "vehicleSpeed": 0,
+      "hvBatterySOH": 94.1,
+      "assetGroup": "Last Mile"
     },
     "unstructuredNotes": "Shared pool vehicle rotated daily between Hayward and San Jose depots based on demand; not permanently assigned to either team.",
+    "updatedAt": "2026-08-19T10:00:00Z",
+    "tenantIds": [
+      "rivian_oem",
+      "acme_fleet_corp"
+    ],
     "segmentAssignments": [
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_hayward_team",
         "ancestorSegments": [
           "seg_global",
@@ -558,9 +844,14 @@
           "seg_california",
           "seg_california_north",
           "seg_hayward_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_hayward"
         ]
       },
       {
+        "tenantId": "acme_fleet_corp",
         "segmentId": "seg_san_jose_team",
         "ancestorSegments": [
           "seg_global",
@@ -568,14 +859,24 @@
           "seg_california",
           "seg_california_north",
           "seg_san_jose_team"
+        ],
+        "authorizedRolesOrTeams": [
+          "region_california_north",
+          "team_san_jose"
+        ]
+      },
+      {
+        "tenantId": "rivian_oem",
+        "segmentId": "seg_rivian_line_r1t",
+        "ancestorSegments": [
+          "seg_rivian_global",
+          "seg_rivian_line_r1t"
+        ],
+        "authorizedRolesOrTeams": [
+          "role_fleet_admin",
+          "role_rivian_r1t_eng"
         ]
       }
-    ],
-    "authorizedRolesOrTeams": [
-      "team_hayward",
-      "team_san_jose",
-      "region_california_north"
-    ],
-    "updatedAt": "2026-08-19T10:00:00Z"
+    ]
   }
 ]

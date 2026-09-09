@@ -9,6 +9,12 @@ platform (vehicles, EV chargers, e-bikes), handling polymorphic asset data,
 hierarchical multi-tenant authorization, and hybrid keyword/vector search
 in one query pass?
 
+The notebook runs against a **live 50,019-document collection** (50,000
+synthetic vehicles across 5 fleet-customer tenants + a small 19-document
+curated correctness fixture), modeling the real entity-relationship
+structure Rivian's fleet architecture uses -- not a toy dataset. See
+[Entity relationship model](#entity-relationship-model) below.
+
 Every claim below was verified by actually running the code against live
 Atlas clusters -- nothing here is illustrative pseudocode. This was
 validated on two clusters: MongoDB 8.0.30 (where native `$rerank` isn't
@@ -30,15 +36,41 @@ the real behavior:
 | `$rerank` aggregation stage, params `queryText`/`field`/`topK` | `$rerank` is a real MongoDB 8.3+ **Preview** stage, but with different params (`model`, `query.text`, `path`, `numDocsToRerank`) and two hard requirements: (1) Native Reranking enabled in Atlas **Project Settings**, and (2) the **cluster itself** running MongoDB 8.3+. Enabling the project setting alone does nothing on an older mongod -- confirmed by testing on a 8.0.30 cluster with the project setting on, which still returned `Unrecognized pipeline stage name: '$rerank'`. It also cannot take `$rankFusion`/`$scoreFusion` as input. **Confirmed working** on a 9.0.0 cluster. The notebook tries native `$rerank` first and falls back to the Voyage AI `.rerank()` API automatically if the server rejects the stage -- both paths verified live. |
 | *(not mentioned)* | MongoDB ships a native **`$rankFusion`** stage that combines keyword (`$search`) and vector (`$vectorSearch`) sub-pipelines with reciprocal rank fusion in a single aggregation call -- a better hybrid-search primitive than the spec assumed existed. |
 
+## Entity relationship model
+
+This is the actual production architecture the schema is built against
+(hierarchical multi-tenant fleet access, described by Rivian's platform
+team), not a simplified textbook version:
+
+| Entity pair | Relationship | Key characteristics |
+|---|---|---|
+| Tenant <-> Segment | One-to-many | A tenant (Rivian, Amazon, ...) owns multiple segments; a segment cannot be shared across two tenants. |
+| Tenant <-> Asset (vehicle) | **Many-to-many** | A vehicle can belong to multiple tenants at once -- an EDV sold to Amazon is accessible by both Amazon (buyer) and Rivian (OEM), but strictly hidden from an unrelated third party. |
+| Segment <-> Asset | Many-to-many | Segments group multiple assets; an asset can be linked to multiple segments, including dynamically via **rule-based segments**. |
+| User/Role <-> Segment | Hierarchical | Access to a parent node (e.g. a region) recursively grants visibility to all child nodes and their connected vehicles. |
+
+The consequence that most changes the schema: since a segment is
+1-tenant-owned but an asset can have multiple tenants, `segmentAssignments`
+has to be **tenant-scoped**, not global -- the same vehicle sits in Rivian's
+internal fleet-health hierarchy *and* the fleet customer's operational
+hierarchy simultaneously, as two independent array entries. See
+[Requirements coverage](#requirements-coverage) below for exactly where
+each relationship is proven live.
+
 ## Requirements coverage
 
 | Req | Feature | Where | Result |
 |---|---|---|---|
-| REQ-01 | Single-pass authorization, no cross-DB fan-out | Notebook Part D | Correctness-verified (identical result sets) and ~1.6-1.7x faster than a simulated 2-round-trip fan-out, at toy (19-doc) scale |
+| REQ-01 | Single-pass authorization, no cross-DB fan-out | Notebook Part D | Correctness-verified (identical result sets) and **3.79x faster** (median 666ms vs 2525ms) than a simulated 2-round-trip fan-out, at real ~50K-document scale with a realistic ~6,600-doc candidate set -- no longer a toy-scale caveat |
 | REQ-02 | Polymorphic schema across asset classes | Notebook Part B | 3 asset types (`vehicle`, `ev_charger`, `e_bike`), different attribute shapes, no migrations |
 | REQ-03 | Hybrid keyword + vector search | Notebook Part E | Native `$rankFusion`, tenant/role filter applied inside each sub-pipeline |
 | REQ-04 | Native Atlas auto-embedding via Voyage AI | Notebook Part C/E | `autoEmbed` index genuinely builds and queries server-side (voyage-4, 1024 dims) |
 | REQ-05 | In-engine / integrated reranking | Notebook Part F | `rerank-2.5` demonstrably reorders top-5 results (not just relabels scores). Uses native server-side `$rerank` on MongoDB 8.3+ with Native Reranking enabled (verified on 9.0.0); falls back to the Voyage AI API automatically on older clusters (verified on 8.0.30) -- both paths tested live, notebook prints which one ran |
+| REQ-06 | Multi-tenant assets (many-to-many) + tenant-scoped segments | Notebook Part D2 | `VIN_RIVIAN_001` verified visible to Rivian OEM + Acme (its buyer), invisible to Globex even though Globex uses the *identical role string* Acme uses internally |
+| REQ-07 | Rule-based / dynamic segment membership | Notebook Part H | A `stateOfCharge < 20` rule segment evaluated live against 50K vehicles, tagging 2,950 matches with a new segment assignment in ~1.7s |
+| REQ-08 | Hierarchical role-grant propagation at scale | Notebook Part I | Granting a role at `seg_california` propagated to 6,600 descendant assets via one `update_many` + `arrayFilters` call in ~1.4s -- the honest cost side of precomputing `authorizedRolesOrTeams` |
+| REQ-09 | Tenant transfer as an ACID transaction | Notebook Part J | `tenantIds` update + segment reassignment + `tenant_transfer_events` log entry committed atomically in one multi-document transaction |
+| REQ-10 | Faceted search backend (filter panel + fleet tree) | Notebook Parts K/L/M, `api/main.py` | `$facet` aggregation (numeric + categorical buckets), Atlas Search `autocomplete` VIN substring search, and a segment-tree rollup-count aggregation -- all wired behind a small FastAPI service, not just notebook cells |
 
 ## Why `asset_segments` and `assets` are separate collections
 
@@ -59,6 +91,17 @@ fully-denormalized collection can't:
 2. You can browse and manage the org tree itself -- including segments with
    zero assets currently assigned -- which a purely asset-denormalized model
    has no place to represent.
+
+**Schema v2 addition:** `segmentAssignments` entries are now tenant-scoped
+(`{tenantId, segmentId, ancestorSegments, authorizedRolesOrTeams}`), and
+`authorizedRolesOrTeams` is no longer hand-set -- it's the **computed**
+union of a new `grantedRoles` field (on `asset_segments`, the actual source
+of truth for "which role is granted at this exact node") across a segment
+and all its ancestors. This is what makes "access to a parent node
+recursively grants visibility to all child nodes" literally true rather
+than asserted: granting a role at `seg_california` and then querying
+descendant assets is proven live in notebook Part I, including the honest
+cost (a bulk update across every descendant asset, not free).
 
 Notebook Part D includes a live demonstration, not just this assertion: a
 path-prefix query against `asset_segments` for hierarchy browsing, followed
@@ -122,23 +165,56 @@ added and verified live against the cluster:
   `asset_segments` and `assets` into one collection would add complexity
   (a `docType` discriminator, mixed indexes) for a join that never happens.
 
-## Why `asset_segments` and `assets` are separate collections
+## Two real "gotchas" found building this at scale
+
+Both surfaced by actually running against a live 50K-document collection,
+not from documentation:
+
+1. **MongoDB rejects a compound index across two different array fields.**
+   `tenantIds` and `segmentAssignments` are both arrays on the same asset
+   document. `db.assets.create_index([("tenantIds", 1), ("segmentAssignments.tenantId", 1)])`
+   creates fine (Mongo doesn't know the data shape yet), but inserting a
+   document where *both* arrays have more than one element fails with
+   `cannot index parallel arrays [segmentAssignments] [tenantIds]`
+   (verified live, notebook Part C1). The fix: `tenantIds` gets its own
+   single-field index; the authorization-query index compounds
+   `segmentAssignments.tenantId` + `segmentAssignments.authorizedRolesOrTeams`
+   together instead (fine -- same array).
+2. **Atlas Search `embeddedDocuments` filters need `equals`, not `text`, for
+   `token`-type fields.** Filtering inside an `embeddedDocument` operator
+   (the search-index equivalent of `$elemMatch`) using `{"text": {"query":
+   ..., "path": "segmentAssignments.tenantId"}}` against a `token`-typed
+   field **silently returns zero results** -- no error, it just doesn't
+   match. Switching to `{"equals": {"value": ..., "path": ...}}` fixes it.
+   This isn't clearly documented anywhere; found by bisecting a hybrid
+   search query that returned 10 results with a plain `$elemMatch` `find()`
+   but 0 results through `$search`.
+
+## Repo layout
 
 ```
 ├── spec.md                        # original technical spec this POC validates
 ├── notebooks/
 │   └── amp_mongodb_poc.ipynb      # the executable, Colab-shareable demo (start here)
 ├── data/
-│   ├── segments_seed.json         # asset_segments hierarchy (2 tenants, multi-level)
-│   └── assets_seed.json           # 19 polymorphic assets, incl. deliberate leak-test decoys
+│   ├── segments_seed.json         # curated asset_segments fixture (rivian_oem + 2 fleet-customer tenants)
+│   ├── assets_seed.json           # 19 curated polymorphic assets, incl. deliberate leak-test decoys
+│   └── generated/                 # gitignored -- 50K-vehicle cache from scripts/generate_fleet_data.py
 ├── scripts/
-│   ├── seed.py                    # CLI seed script, reads data/*.json
+│   ├── topology.py                # shared tenant/segment/authorization-closure logic;
+│   │                              #   embedded verbatim into the notebook (Part A3) so it's
+│   │                              #   self-contained without the repo checked out
+│   ├── generate_fleet_data.py     # generates + bulk-inserts the ~50K-vehicle scale dataset
+│   ├── seed.py                    # CLI seed script for the curated fixture, reads data/*.json
 │   ├── create_indexes.py          # CLI index setup (mirrors notebook Part C)
-│   ├── build_notebook.py          # generates the .ipynb; Part B's seed data is
-│   │                              #   loaded from data/*.json at generation time
-│   │                              #   (not duplicated by hand), so seed.py and the
-│   │                              #   notebook are guaranteed to seed identical data
+│   ├── build_notebook.py          # generates the .ipynb; seed data is loaded from data/*.json
+│   │                              #   and topology.py at generation time (not duplicated by
+│   │                              #   hand), so the CLI scripts and notebook stay identical
 │   └── execute_notebook.py        # runs the .ipynb end-to-end and saves outputs (dev tool)
+├── api/
+│   └── main.py                    # small FastAPI service exposing the notebook's queries as
+│                                  #   real HTTP JSON endpoints (/vehicles, /facets,
+│                                  #   /segments/tree, /vehicles/search) -- see below
 ├── .env.example
 └── LICENSE
 ```
@@ -162,18 +238,47 @@ Voyage AI rerank API with an identical result.
 ```bash
 cp .env.example .env   # fill in MONGODB_URI and VOYAGE_API_KEY
 pip install -r <(python3 -c "print('pymongo[srv]\npandas\nvoyageai\ncertifi\npython-dotenv\nnbformat\nnbclient\nipykernel')")
-python scripts/seed.py
-python scripts/create_indexes.py
+python scripts/seed.py                 # curated 19-doc fixture (+ 6 tenants, small hierarchies)
+python scripts/generate_fleet_data.py  # ~50,000 synthetic vehicles across 5 fleet customers
+python scripts/create_indexes.py       # operational + Atlas Search/Vector/autocomplete indexes
 ```
+
+### Option C: Faceted-search API
+
+A small FastAPI service exposes the Part K/L/M queries as real HTTP JSON
+endpoints -- the shapes a fleet-tracker frontend would actually consume,
+proving the query patterns are wireable behind a real API (not just
+notebook cells):
+
+```bash
+pip install fastapi uvicorn
+uvicorn api.main:app --reload --port 8000
+
+curl "http://localhost:8000/vehicles?tenant=amazon_logistics&role=region_amazon_logistics_0&page=1&pageSize=10"
+curl "http://localhost:8000/facets?tenant=amazon_logistics&role=region_amazon_logistics_0"
+curl "http://localhost:8000/segments/tree?tenant=amazon_logistics"
+curl "http://localhost:8000/vehicles/search?vin=6493&tenant=amazon_logistics&role=region_amazon_logistics_0"
+```
+
+`tenant`/`role` are plain query params standing in for what a real
+deployment would pull from an authenticated session/JWT -- there's no auth
+system here, the point is proving the MongoDB query patterns work behind a
+real API.
 
 ## Data model notes
 
 `data/assets_seed.json` deliberately includes three "trap" documents used to
 prove security filtering actually works, not just that queries compile:
 
-- `VIN_RIVIAN_009` -- admin-only asset (`role_fleet_admin`), semantically the
-  single most relevant document for the demo query, and must be excluded for
-  a regular regional-manager role.
+- `VIN_RIVIAN_009` -- admin-only asset. Modeled as a dedicated
+  `seg_ca_north_restricted` segment (`role_fleet_admin` only) that is a
+  **sibling** of `seg_california_north` (parented directly under
+  `seg_global`), not a child of it. This matters: hierarchical access here
+  is monotonic (a child can only add grants on top of its ancestors', never
+  subtract one), so nesting a "restricted" segment under the region it was
+  pulled from would still inherit `region_california_north` from that
+  ancestor and silently un-restrict it -- a bug caught by actually running
+  the computed-closure logic against this fixture, not by inspection.
 - `VIN_GLOBEX_001` -- a *different tenant* (`globex_logistics`) whose
   `authorizedRolesOrTeams` array happens to contain the exact same role
   string (`region_california_north`) used elsewhere for `acme_fleet_corp`.
@@ -199,11 +304,24 @@ only `team_san_jose` **both** see it, and a `team_austin` user does not.
   PostgreSQL in this environment). It correctly isolates the cost of one
   extra network round trip + app-layer `$in` assembly, but understates what
   a true cross-database (different systems, connection pools, serialization
-  formats) fan-out would cost at production scale (~10,000 resolved IDs, per
-  the spec's own numbers).
-- 19 seed documents is enough to demonstrate correctness and relative
-  ordering effects (hybrid search, reranking), not to make statistically
-  rigorous precision/recall claims at production data volumes.
+  formats) fan-out would cost at production scale. That said, the benchmark
+  now runs against ~50,000 real documents with a realistic ~6,600-doc
+  candidate set (3.79x speedup), so it's no longer a toy-scale caveat --
+  just a same-cluster-on-both-sides one.
+- The hybrid-search/rerank demos (Parts E/F) stay on the small 19-doc
+  curated fixture, not the full 50K -- generated vehicles deliberately don't
+  get `unstructuredNotes`/embeddings, since embedding 50K docs via Voyage
+  would cost real time/money for no additional demo signal. 19 documents is
+  enough to demonstrate correctness and relative ordering effects, not to
+  make statistically rigorous precision/recall claims at scale.
+- Generated VINs (`scripts/generate_fleet_data.py`) loosely mimic real
+  17-character VIN shape for search/autocomplete demos; they are not valid
+  check-digit VINs.
+- The `/facets` API endpoint scopes by tenant+role only, not by other
+  active filters simultaneously (e.g. "facet counts for Ready-to-Charge
+  vehicles only") -- a real product would likely fold the active filter set
+  into the `$match` stage before `$facet`, which this POC's aggregation
+  already supports mechanically, it's just not exposed as a query param yet.
 - Atlas's search index management control plane occasionally returns a
   transient error under heavy index create/drop churn
   (`Error connecting to Search Index Management service`); the notebook and

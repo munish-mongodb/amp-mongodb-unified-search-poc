@@ -20,7 +20,7 @@ NB_PATH = ROOT / "notebooks" / "amp_mongodb_poc.ipynb"
 nb = nbformat.read(NB_PATH, as_version=4)
 client = NotebookClient(
     nb,
-    timeout=600,
+    timeout=1800,
     kernel_name="python3",
     resources={"metadata": {"path": str(ROOT)}},
 )

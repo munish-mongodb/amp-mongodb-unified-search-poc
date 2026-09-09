@@ -15,6 +15,8 @@ import certifi
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
+from topology import TENANTS
+
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
@@ -34,18 +36,21 @@ def main() -> None:
     segments = load_json("segments_seed.json")
     assets = load_json("assets_seed.json")
 
+    db.tenants.drop()
     db.asset_segments.drop()
     db.assets.drop()
 
+    db.tenants.insert_many(TENANTS)
     db.asset_segments.insert_many(segments)
     db.assets.insert_many(assets)
 
+    print(f"Seeded {MONGODB_DB}.tenants: {db.tenants.count_documents({})} docs")
     print(f"Seeded {MONGODB_DB}.asset_segments: {db.asset_segments.count_documents({})} docs")
     print(f"Seeded {MONGODB_DB}.assets: {db.assets.count_documents({})} docs")
 
-    tenants = db.assets.distinct("tenantId")
+    tenants = db.assets.distinct("tenantIds")
     types = db.assets.distinct("assetType")
-    print(f"Tenants: {tenants}")
+    print(f"Tenants referenced by assets: {tenants}")
     print(f"Asset types: {types}")
 
 
