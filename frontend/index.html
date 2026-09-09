@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AMP Fleet Portal (POC)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --navy: #0c1a2e;
+    --blue: #1f5fd1;
+    --border: #e2e5ea;
+    --bg: #f7f8fa;
+    --text: #1a1f2b;
+    --muted: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--text); background: #fff; }
+  #app { display: flex; height: 100vh; }
+
+  /* --- sidebar --- */
+  #sidebar { width: 210px; background: var(--bg); border-right: 1px solid var(--border); padding: 16px 0; flex-shrink: 0; overflow-y: auto; }
+  .brand { font-weight: 700; padding: 4px 20px 16px; color: var(--navy); font-size: 15px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 20px; font-size: 13.5px; color: #384153; cursor: default; }
+  .nav-item.active { background: #e7edfb; color: var(--blue); font-weight: 600; border-right: 3px solid var(--blue); }
+  .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #b7bfcc; flex-shrink: 0; }
+  .nav-sub { padding-left: 40px; }
+  .nav-section-label { padding: 18px 20px 6px; font-size: 10.5px; letter-spacing: .06em; color: #9aa2b1; text-transform: uppercase; }
+
+  /* --- main --- */
+  #main { flex: 1; overflow-y: auto; padding: 22px 28px; }
+  h1 { font-size: 22px; margin: 0 0 16px; }
+
+  .poc-banner { background: #fff7e6; border: 1px solid #f0c36d; color: #7a5b00; font-size: 12.5px; padding: 8px 12px; border-radius: 6px; margin-bottom: 16px; }
+
+  .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .label { font-size: 10.5px; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; margin-right: -6px; }
+  .pill-btn { border: 1px solid var(--border); background: #fff; border-radius: 20px; padding: 7px 14px; font-size: 13px; cursor: pointer; color: var(--text); }
+  .pill-btn:hover { background: var(--bg); }
+  select, input[type=text] { border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13px; }
+  #searchBox { min-width: 220px; }
+  .count-text { font-size: 13px; color: var(--muted); }
+  .spacer { flex: 1; }
+  .toggle-group { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .toggle-group button { border: none; background: #fff; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+  .toggle-group button.active { background: var(--navy); color: #fff; }
+
+  .toolbar2 { display: flex; gap: 10px; margin-bottom: 14px; }
+  .btn { border: 1px solid var(--border); background: #fff; border-radius: 6px; padding: 7px 14px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .btn:hover { background: var(--bg); }
+  .btn-primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn-primary:hover { background: #1a52ba; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { text-align: left; padding: 8px 10px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody td { padding: 10px; border-bottom: 1px solid #f0f1f4; white-space: nowrap; }
+  tbody tr:hover { background: #fafbfc; }
+  .vin-cell a { color: var(--blue); text-decoration: none; font-weight: 600; }
+  .vin-sub { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11.5px; }
+  .badge-ready { background: #e6f4ea; color: #1e7e34; }
+  .badge-complete { background: #e6f4ea; color: #1e7e34; }
+  .badge-waiting { background: #fff3cd; color: #8a6d00; }
+  .badge-charging { background: #e7edfb; color: var(--blue); }
+  .badge-not { background: #f1f2f4; color: #555; }
+
+  .pagination { display: flex; justify-content: flex-end; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; }
+  .pagination button { border: 1px solid var(--border); background: #fff; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  .pagination button:disabled { opacity: .4; cursor: default; }
+
+  /* --- overlay panels --- */
+  .overlay { position: fixed; inset: 0; background: rgba(10,15,25,.35); display: none; z-index: 50; }
+  .overlay.open { display: block; }
+  .drawer { position: fixed; top: 0; right: 0; height: 100%; width: 340px; background: #fff; box-shadow: -4px 0 20px rgba(0,0,0,.12); padding: 20px; overflow-y: auto; }
+  .modal { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); width: 520px; max-height: 70vh; background: #fff; border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.2); padding: 20px; overflow-y: auto; }
+  .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .panel-header h2 { font-size: 17px; margin: 0; }
+  .close-x { cursor: pointer; font-size: 18px; color: var(--muted); background: none; border: none; }
+
+  .facet-group { margin-bottom: 18px; }
+  .facet-group summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 6px 0; }
+  .facet-option { display: flex; justify-content: space-between; padding: 4px 0 4px 14px; font-size: 12.5px; cursor: pointer; color: #384153; }
+  .facet-option:hover { color: var(--blue); }
+  .facet-option.selected { color: var(--blue); font-weight: 600; }
+  .facet-option .cnt { color: var(--muted); }
+
+  .tree-node { font-size: 13px; margin: 2px 0; }
+  .tree-row { display: flex; align-items: center; gap: 6px; padding: 5px 4px; border-radius: 4px; cursor: pointer; }
+  .tree-row:hover { background: var(--bg); }
+  .tree-row.selected { background: #e7edfb; color: var(--blue); font-weight: 600; }
+  .tree-children { margin-left: 18px; border-left: 1px solid var(--border); padding-left: 8px; }
+  .tree-count { margin-left: auto; color: var(--muted); font-size: 12px; }
+  .caret { width: 14px; display: inline-block; color: var(--muted); }
+
+  .footer-note { margin-top: 22px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  code { background: #f1f2f4; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <div class="brand">Portal Hub</div>
+    <div class="nav-item active"><span class="dot"></span> Vehicles</div>
+    <div class="nav-item nav-sub" style="color:var(--blue)">Vehicle Tracker</div>
+    <div class="nav-item nav-sub">Reports</div>
+    <div class="nav-item nav-sub">Fleet Health</div>
+    <div class="nav-item nav-sub">Geofencing</div>
+    <div class="nav-item"><span class="dot"></span> Maintenance &amp; Service</div>
+    <div class="nav-item"><span class="dot"></span> Orders</div>
+    <div class="nav-item"><span class="dot"></span> Connectivity</div>
+    <div class="nav-item"><span class="dot"></span> Software Update</div>
+    <div class="nav-item"><span class="dot"></span> Billing &amp; Payments</div>
+    <div class="nav-section-label">Tools</div>
+    <div class="nav-item"><span class="dot"></span> Documents</div>
+    <div class="nav-item"><span class="dot"></span> Admin</div>
+  </div>
+
+  <div id="main">
+    <h1>Vehicles</h1>
+    <div class="poc-banner">
+      POC note: <b>Tenant</b> / <b>Role</b> below stand in for an authenticated session (there's no login system here) --
+      every query is scoped through MongoDB's single-pass authorization filter, the same one proven in the notebook.
+      This UI approximates the reference screenshots functionally (same columns, filter panel, fleet tree);
+      it is not a pixel-accurate clone of Rivian's product design.
+    </div>
+
+    <div class="toolbar">
+      <span class="label">Tenant</span>
+      <select id="tenantSelect"></select>
+      <span class="label">Role</span>
+      <select id="roleSelect"></select>
+      <button class="pill-btn" id="fleetBtn">Fleet: <span id="fleetLabel">All</span> ▾</button>
+      <input type="text" id="searchBox" placeholder="Search by VIN">
+      <span class="count-text" id="countText">Showing 0 / 0 vehicles</span>
+      <div class="spacer"></div>
+      <div class="toggle-group"><button class="active">List</button><button disabled title="Not implemented in this POC">Map</button></div>
+    </div>
+
+    <div class="toolbar2">
+      <button class="btn" id="filtersBtn">&#9776; Filters</button>
+      <div class="spacer"></div>
+      <button class="btn" disabled title="Not implemented in this POC">Export</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>VIN</th><th>Name</th><th>Distance to Empty</th><th>Charging Status</th>
+          <th>State of Charge</th><th>Mileage</th><th>Trim</th><th>Model</th><th>Year</th><th>Make</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+
+    <div class="pagination">
+      <span id="pageInfo"></span>
+      <button id="prevPage">&lt; Prev</button>
+      <button id="nextPage">Next &gt;</button>
+    </div>
+
+    <div class="footer-note">
+      Backed live by <code>GET /vehicles</code>, <code>/facets</code>, <code>/segments/tree</code>,
+      <code>/vehicles/search</code> against a 50,019-document MongoDB Atlas collection. See
+      <code>api/main.py</code> and the notebook for the underlying queries.
+    </div>
+  </div>
+</div>
+
+<!-- Filters drawer -->
+<div class="overlay" id="filterOverlay">
+  <div class="drawer">
+    <div class="panel-header"><h2>Filter</h2><button class="close-x" id="closeFilters">&times;</button></div>
+    <div id="facetContainer"></div>
+    <button class="btn btn-primary" id="clearFilters" style="width:100%">Clear all filters</button>
+  </div>
+</div>
+
+<!-- Fleet selection modal -->
+<div class="overlay" id="fleetOverlay">
+  <div class="modal">
+    <div class="panel-header"><h2>Fleet Selection</h2><button class="close-x" id="closeFleet">&times;</button></div>
+    <p style="font-size:12.5px;color:var(--muted);margin-top:-8px">Select a node to scope the vehicle list to that subtree (rollup counts computed live via MongoDB aggregation).</p>
+    <div id="treeContainer"></div>
+  </div>
+</div>
+
+<script>
+const API = ""; // same-origin (served by FastAPI's StaticFiles mount)
+
+const state = {
+  tenant: null,
+  role: null,
+  segment: null,
+  segmentLabel: "All",
+  page: 1,
+  pageSize: 25,
+  filters: {}, // chargingStatus, trim, model, assetGroup, minSOC, maxSOC
+  searchQuery: "",
+};
+
+async function api(path, params) {
+  const url = new URL(API + path, window.location.origin);
+  Object.entries(params || {}).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v); });
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function baseParams() {
+  return { tenant: state.tenant, role: state.role, segment: state.segment || undefined };
+}
+
+// ---------- vehicles table ----------
+async function loadVehicles() {
+  if (!state.tenant || !state.role) return;
+  if (state.searchQuery) {
+    const data = await api("/vehicles/search", { ...baseParams(), vin: state.searchQuery, limit: 25 });
+    renderTable(data.vehicles);
+    document.getElementById("countText").textContent = `Showing ${data.vehicles.length} / ${data.vehicles.length} vehicles (VIN search)`;
+    document.getElementById("pageInfo").textContent = "";
+    return;
+  }
+  const params = {
+    ...baseParams(), page: state.page, pageSize: state.pageSize,
+    chargingStatus: state.filters.chargingStatus, trim: state.filters.trim,
+    model: state.filters.model, assetGroup: state.filters.assetGroup,
+    minSOC: state.filters.minSOC, maxSOC: state.filters.maxSOC,
+  };
+  const data = await api("/vehicles", params);
+  renderTable(data.vehicles);
+  document.getElementById("countText").textContent = `Showing ${data.vehicles.length} / ${data.totalCount} vehicles`;
+  const totalPages = Math.max(1, Math.ceil(data.totalCount / state.pageSize));
+  document.getElementById("pageInfo").textContent = `Page ${state.page} of ${totalPages}`;
+  document.getElementById("prevPage").disabled = state.page <= 1;
+  document.getElementById("nextPage").disabled = state.page >= totalPages;
+}
+
+function badgeClass(status) {
+  return { "Ready to Charge": "badge-ready", "Charging Complete": "badge-complete",
+           "Waiting on Charger": "badge-waiting", "Charging": "badge-charging",
+           "Not Charging": "badge-not" }[status] || "badge-not";
+}
+
+function renderTable(vehicles) {
+  const body = document.getElementById("tableBody");
+  body.innerHTML = "";
+  for (const v of vehicles) {
+    const tr = document.createElement("tr");
+    const name = (v.vin || "").slice(-6);
+    tr.innerHTML = `
+      <td class="vin-cell"><a href="#">${v.vin}</a><div class="vin-sub">&#128267; ${v.distanceToEmptyMiles ?? "-"} mi / ${v.stateOfCharge ?? "-"}%</div></td>
+      <td>${name}</td>
+      <td>${v.distanceToEmptyMiles ?? "-"} mi</td>
+      <td><span class="badge ${badgeClass(v.chargingStatus)}">${v.chargingStatus ?? "-"}</span></td>
+      <td>${v.stateOfCharge ?? "-"}%</td>
+      <td>${(v.mileage ?? 0).toLocaleString()} mi</td>
+      <td>${v.trim ?? "-"}</td>
+      <td>${v.model ?? "-"}</td>
+      <td>${v.year ?? "-"}</td>
+      <td>${v.make ?? "-"}</td>`;
+    body.appendChild(tr);
+  }
+}
+
+// ---------- facets / filter drawer ----------
+async function loadFacets() {
+  const data = await api("/facets", baseParams());
+  const container = document.getElementById("facetContainer");
+  container.innerHTML = "";
+
+  const categorical = [
+    ["chargingStatus", "Charging Status"], ["trim", "Trim"], ["model", "Model"], ["assetGroup", "Asset Group"],
+  ];
+  for (const [key, label] of categorical) {
+    const det = document.createElement("details");
+    det.className = "facet-group";
+    det.open = true;
+    const options = Object.entries(data[key] || {}).map(([val, count]) => {
+      const selected = state.filters[key] === val;
+      return `<div class="facet-option ${selected ? "selected" : ""}" data-key="${key}" data-val="${val}">
+        <span>${val}</span><span class="cnt">${count}</span></div>`;
+    }).join("");
+    det.innerHTML = `<summary>${label}</summary>${options}`;
+    container.appendChild(det);
+  }
+
+  const socDet = document.createElement("details");
+  socDet.className = "facet-group";
+  socDet.open = true;
+  const socLabels = { "0": "0-24%", "25": "25-49%", "50": "50-74%", "75": "75-100%" };
+  const socOptions = Object.entries(data.stateOfChargeBuckets || {}).map(([bucket, count]) => {
+    const [min, max] = { "0": [0, 25], "25": [25, 50], "50": [50, 75], "75": [75, 101] }[bucket] || [0, 101];
+    const selected = state.filters.minSOC == min && state.filters.maxSOC == (max - 1);
+    return `<div class="facet-option ${selected ? "selected" : ""}" data-soc-min="${min}" data-soc-max="${max - 1}">
+      <span>${socLabels[bucket] || bucket}</span><span class="cnt">${count}</span></div>`;
+  }).join("");
+  socDet.innerHTML = `<summary>State of Charge</summary>${socOptions}`;
+  container.appendChild(socDet);
+
+  container.querySelectorAll(".facet-option[data-key]").forEach(el => {
+    el.addEventListener("click", () => {
+      const key = el.dataset.key, val = el.dataset.val;
+      state.filters[key] = state.filters[key] === val ? undefined : val;
+      state.page = 1;
+      loadVehicles(); loadFacets();
+    });
+  });
+  container.querySelectorAll(".facet-option[data-soc-min]").forEach(el => {
+    el.addEventListener("click", () => {
+      const min = el.dataset.socMin, max = el.dataset.socMax;
+      if (state.filters.minSOC == min) { state.filters.minSOC = undefined; state.filters.maxSOC = undefined; }
+      else { state.filters.minSOC = min; state.filters.maxSOC = max; }
+      state.page = 1;
+      loadVehicles(); loadFacets();
+    });
+  });
+}
+
+// ---------- fleet tree ----------
+async function loadTree() {
+  const data = await api("/segments/tree", { tenant: state.tenant });
+  const container = document.getElementById("treeContainer");
+  container.innerHTML = "";
+
+  function renderNode(node, depth) {
+    const wrap = document.createElement("div");
+    wrap.className = "tree-node";
+    const row = document.createElement("div");
+    row.className = "tree-row" + (state.segment === node.id ? " selected" : "");
+    row.innerHTML = `<span>${node.name}</span><span class="tree-count">${node.vehicleCount} vehicles</span>`;
+    row.addEventListener("click", () => {
+      state.segment = node.id;
+      state.segmentLabel = node.name;
+      state.page = 1;
+      document.getElementById("fleetLabel").textContent = node.name;
+      document.getElementById("fleetOverlay").classList.remove("open");
+      loadVehicles(); loadFacets();
+    });
+    wrap.appendChild(row);
+    if (node.children && node.children.length) {
+      const childWrap = document.createElement("div");
+      childWrap.className = "tree-children";
+      node.children.forEach(c => childWrap.appendChild(renderNode(c, depth + 1)));
+      wrap.appendChild(childWrap);
+    }
+    return wrap;
+  }
+
+  const allRow = document.createElement("div");
+  allRow.className = "tree-row" + (state.segment === null ? " selected" : "");
+  const total = data.tree.reduce((sum, r) => sum + r.vehicleCount, 0);
+  allRow.innerHTML = `<span>All (no segment scope)</span><span class="tree-count">${total} vehicles</span>`;
+  allRow.addEventListener("click", () => {
+    state.segment = null; state.segmentLabel = "All";
+    document.getElementById("fleetLabel").textContent = "All";
+    document.getElementById("fleetOverlay").classList.remove("open");
+    state.page = 1;
+    loadVehicles(); loadFacets();
+  });
+  container.appendChild(allRow);
+  data.tree.forEach(root => container.appendChild(renderNode(root, 0)));
+}
+
+// ---------- tenant / role setup ----------
+async function loadTenants() {
+  const data = await api("/tenants", {});
+  const sel = document.getElementById("tenantSelect");
+  sel.innerHTML = data.tenants.map(t => `<option value="${t._id}">${t.name}</option>`).join("");
+  sel.value = "amazon_logistics";
+  state.tenant = sel.value;
+  await loadRoles();
+}
+
+async function loadRoles() {
+  const data = await api(`/tenants/${state.tenant}/roles`, {});
+  const sel = document.getElementById("roleSelect");
+  sel.innerHTML = data.roles.map(r => `<option value="${r}">${r}</option>`).join("");
+  const admin = data.roles.find(r => r.startsWith("role_fleet_admin"));
+  sel.value = admin || data.roles[0];
+  state.role = sel.value;
+  state.segment = null; state.segmentLabel = "All";
+  document.getElementById("fleetLabel").textContent = "All";
+  await Promise.all([loadVehicles(), loadFacets()]);
+}
+
+// ---------- wiring ----------
+document.getElementById("tenantSelect").addEventListener("change", async e => {
+  state.tenant = e.target.value;
+  await loadRoles();
+});
+document.getElementById("roleSelect").addEventListener("change", e => {
+  state.role = e.target.value;
+  state.page = 1;
+  loadVehicles(); loadFacets();
+});
+document.getElementById("fleetBtn").addEventListener("click", () => {
+  document.getElementById("fleetOverlay").classList.add("open");
+  loadTree();
+});
+document.getElementById("closeFleet").addEventListener("click", () => document.getElementById("fleetOverlay").classList.remove("open"));
+document.getElementById("filtersBtn").addEventListener("click", () => {
+  document.getElementById("filterOverlay").classList.add("open");
+  loadFacets();
+});
+document.getElementById("closeFilters").addEventListener("click", () => document.getElementById("filterOverlay").classList.remove("open"));
+document.getElementById("clearFilters").addEventListener("click", () => {
+  state.filters = {}; state.page = 1;
+  loadVehicles(); loadFacets();
+});
+document.getElementById("prevPage").addEventListener("click", () => { if (state.page > 1) { state.page--; loadVehicles(); } });
+document.getElementById("nextPage").addEventListener("click", () => { state.page++; loadVehicles(); });
+
+let searchTimer;
+document.getElementById("searchBox").addEventListener("input", e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    state.searchQuery = e.target.value.trim();
+    loadVehicles();
+  }, 300);
+});
+[document.getElementById("filterOverlay"), document.getElementById("fleetOverlay")].forEach(ov => {
+  ov.addEventListener("click", e => { if (e.target === ov) ov.classList.remove("open"); });
+});
+
+loadTenants();
+</script>
+</body>
+</html>

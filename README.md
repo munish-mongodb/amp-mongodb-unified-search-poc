@@ -70,7 +70,7 @@ each relationship is proven live.
 | REQ-07 | Rule-based / dynamic segment membership | Notebook Part H | A `stateOfCharge < 20` rule segment evaluated live against 50K vehicles, tagging 2,950 matches with a new segment assignment in ~1.7s |
 | REQ-08 | Hierarchical role-grant propagation at scale | Notebook Part I | Granting a role at `seg_california` propagated to 6,600 descendant assets via one `update_many` + `arrayFilters` call in ~1.4s -- the honest cost side of precomputing `authorizedRolesOrTeams` |
 | REQ-09 | Tenant transfer as an ACID transaction | Notebook Part J | `tenantIds` update + segment reassignment + `tenant_transfer_events` log entry committed atomically in one multi-document transaction |
-| REQ-10 | Faceted search backend (filter panel + fleet tree) | Notebook Parts K/L/M, `api/main.py` | `$facet` aggregation (numeric + categorical buckets), Atlas Search `autocomplete` VIN substring search, and a segment-tree rollup-count aggregation -- all wired behind a small FastAPI service, not just notebook cells |
+| REQ-10 | Faceted search backend (filter panel + fleet tree) | Notebook Parts K/L/M, `api/main.py`, `frontend/index.html` | `$facet` aggregation (numeric + categorical buckets), Atlas Search `autocomplete` VIN substring search, and a segment-tree rollup-count aggregation -- wired behind a FastAPI service and a real clickable UI, verified end-to-end with a headless-browser test, not just notebook cells |
 
 ## Why `asset_segments` and `assets` are separate collections
 
@@ -215,6 +215,9 @@ not from documentation:
 │   └── main.py                    # small FastAPI service exposing the notebook's queries as
 │                                  #   real HTTP JSON endpoints (/vehicles, /facets,
 │                                  #   /segments/tree, /vehicles/search) -- see below
+├── frontend/
+│   └── index.html                 # single-page vanilla-JS reference UI, served by api/main.py
+│                                  #   at "/" -- table, search, filter panel, fleet tree
 ├── .env.example
 └── LICENSE
 ```
@@ -243,27 +246,52 @@ python scripts/generate_fleet_data.py  # ~50,000 synthetic vehicles across 5 fle
 python scripts/create_indexes.py       # operational + Atlas Search/Vector/autocomplete indexes
 ```
 
-### Option C: Faceted-search API
+### Option C: Faceted-search API + reference UI
 
-A small FastAPI service exposes the Part K/L/M queries as real HTTP JSON
-endpoints -- the shapes a fleet-tracker frontend would actually consume,
-proving the query patterns are wireable behind a real API (not just
-notebook cells):
+A small FastAPI service (`api/main.py`) exposes the Part K/L/M queries as
+real HTTP JSON endpoints, and serves a single-page vanilla-JS UI
+(`frontend/index.html`) that actually calls them -- a real, clickable demo,
+not just notebook cells or curl output. It approximates the reference
+fleet-portal screenshots **functionally** (same table columns, filter
+panel, fleet-selection tree with rollup counts) -- it is not a
+pixel-accurate clone of any product's design system.
 
 ```bash
 pip install fastapi uvicorn
-uvicorn api.main:app --reload --port 8000
+python3 -m uvicorn api.main:app --reload --port 8000
+# (use `python3 -m uvicorn`, not bare `uvicorn`, if pip installed its
+# console script somewhere not on your PATH)
+```
 
-curl "http://localhost:8000/vehicles?tenant=amazon_logistics&role=region_amazon_logistics_0&page=1&pageSize=10"
-curl "http://localhost:8000/facets?tenant=amazon_logistics&role=region_amazon_logistics_0"
+Open **http://localhost:8000** for the UI (served same-origin, no CORS
+needed), or hit the API directly:
+
+```bash
+curl "http://localhost:8000/tenants"
+curl "http://localhost:8000/tenants/amazon_logistics/roles"
+curl "http://localhost:8000/vehicles?tenant=amazon_logistics&role=role_fleet_admin&page=1&pageSize=10"
+curl "http://localhost:8000/vehicles?tenant=amazon_logistics&role=role_fleet_admin&segment=seg_amazon_logistics_region0_depot1"
+curl "http://localhost:8000/facets?tenant=amazon_logistics&role=role_fleet_admin"
 curl "http://localhost:8000/segments/tree?tenant=amazon_logistics"
-curl "http://localhost:8000/vehicles/search?vin=6493&tenant=amazon_logistics&role=region_amazon_logistics_0"
+curl "http://localhost:8000/vehicles/search?vin=6493&tenant=amazon_logistics&role=role_fleet_admin"
 ```
 
 `tenant`/`role` are plain query params standing in for what a real
 deployment would pull from an authenticated session/JWT -- there's no auth
 system here, the point is proving the MongoDB query patterns work behind a
-real API.
+real API. The UI's tenant/role selectors are the same stand-in, made
+explicit in a banner rather than hidden.
+
+The UI was verified end-to-end with a headless-browser test (Playwright) --
+tenant/role switching, fleet-tree drill-down, filter clicks, VIN search, and
+pagination all exercised against the live 50K-document API, not just
+loaded and eyeballed. That test caught a real bug: `role_fleet_admin` was
+scoped narrowly (only granted on one safety-hold segment) for the two
+curated-fixture tenants, while it's a broad tenant-wide role for the 3
+generated-scale tenants -- same role name, inconsistent meaning, which
+showed up as "1 vehicle" instead of "10,000+" when switching tenants in
+the UI. Fixed by granting `role_fleet_admin` at the curated tenants' global
+root too, then recomputing every affected `authorizedRolesOrTeams` closure.
 
 ## Data model notes
 
@@ -317,11 +345,21 @@ only `team_san_jose` **both** see it, and a `team_austin` user does not.
 - Generated VINs (`scripts/generate_fleet_data.py`) loosely mimic real
   17-character VIN shape for search/autocomplete demos; they are not valid
   check-digit VINs.
-- The `/facets` API endpoint scopes by tenant+role only, not by other
-  active filters simultaneously (e.g. "facet counts for Ready-to-Charge
-  vehicles only") -- a real product would likely fold the active filter set
-  into the `$match` stage before `$facet`, which this POC's aggregation
-  already supports mechanically, it's just not exposed as a query param yet.
+- The `/facets` API endpoint scopes by tenant+role+segment, but not by the
+  *other* active categorical/range filters simultaneously (e.g. "facet
+  counts for Ready-to-Charge vehicles only") -- a real product would likely
+  fold the active filter set into the `$match` stage before `$facet`, which
+  this POC's aggregation already supports mechanically, it's just not
+  exposed as a query param yet.
+- `frontend/index.html` matches the reference screenshots **functionally**
+  (same columns, same filter categories, same fleet-tree rollup-count
+  behavior) using a generic clean style -- it does not replicate Rivian's
+  actual design system (fonts, exact spacing/icons/colors). That was a
+  deliberate scope call, not an oversight.
+- There's no auth system in the API/UI -- `tenant`/`role` are plain,
+  unvalidated query params/dropdowns anyone can set to anything. A real
+  deployment would derive these from an authenticated session/JWT and would
+  never trust a client-supplied role.
 - Atlas's search index management control plane occasionally returns a
   transient error under heavy index create/drop churn
   (`Error connecting to Search Index Management service`); the notebook and

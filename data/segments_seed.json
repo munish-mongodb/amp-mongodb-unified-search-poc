@@ -13,7 +13,9 @@
       "path": ",seg_global,"
     },
     "createdAt": "2025-01-01T08:00:00Z",
-    "grantedRoles": []
+    "grantedRoles": [
+      "role_fleet_admin"
+    ]
   },
   {
     "_id": "seg_us_west",
@@ -175,7 +177,9 @@
       "path": ",seg_globex_global,"
     },
     "createdAt": "2025-03-01T08:00:00Z",
-    "grantedRoles": []
+    "grantedRoles": [
+      "role_fleet_admin"
+    ]
   },
   {
     "_id": "seg_globex_midwest",

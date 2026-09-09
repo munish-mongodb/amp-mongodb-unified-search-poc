@@ -27,6 +27,8 @@ from typing import Optional
 import certifi
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pymongo import MongoClient
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -40,12 +42,47 @@ db = client[MONGODB_DB]
 
 app = FastAPI(title="AMP Fleet API (POC)", version="0.1.0")
 
+# Demo-only: the reference frontend (frontend/index.html) calls this API
+# directly from the browser. A real deployment would restrict this to its
+# actual frontend origin (and wouldn't need it at all if same-origin, which
+# is also supported below via StaticFiles).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
-def auth_filter(tenant: str, role: str) -> dict:
+
+def auth_filter(tenant: str, role: str, segment: Optional[str] = None) -> dict:
     """The single-pass authorization filter proven in notebook Part D --
     every endpoint below scopes through this, never returning data the
-    caller's tenant+role isn't entitled to."""
-    return {"segmentAssignments": {"$elemMatch": {"tenantId": tenant, "authorizedRolesOrTeams": role}}}
+    caller's tenant+role isn't entitled to. `segment`, if given, further
+    narrows to a specific node's subtree (used by the Fleet Selection tree
+    in the frontend) via the same ancestorSegments membership check used
+    for the rollup-count aggregation in notebook Part M."""
+    elem_match = {"tenantId": tenant, "authorizedRolesOrTeams": role}
+    if segment:
+        elem_match["ancestorSegments"] = segment
+    return {"segmentAssignments": {"$elemMatch": elem_match}}
+
+
+@app.get("/tenants")
+def list_tenants():
+    """Tenant picker -- stands in for "which org is this session logged
+    into" in a real deployment."""
+    return {"tenants": list(db.tenants.find({}, {"_id": 1, "name": 1, "type": 1}))}
+
+
+@app.get("/tenants/{tenant}/roles")
+def list_roles(tenant: str):
+    """Distinct roles granted anywhere in this tenant's segment tree --
+    stands in for "which roles could a logged-in user have" in a real
+    deployment (there's no user/session model in this POC)."""
+    roles = db.asset_segments.distinct("grantedRoles", {"tenantId": tenant})
+    if not roles:
+        raise HTTPException(status_code=404, detail=f"No roles found for tenant '{tenant}'")
+    return {"tenant": tenant, "roles": sorted(roles)}
 
 
 @app.get("/health")
@@ -57,6 +94,7 @@ def health():
 def list_vehicles(
     tenant: str,
     role: str,
+    segment: Optional[str] = None,
     page: int = Query(1, ge=1),
     pageSize: int = Query(25, ge=1, le=200),
     chargingStatus: Optional[str] = None,
@@ -68,7 +106,7 @@ def list_vehicles(
 ):
     """Paginated vehicle list -- the "Vehicle Tracker" table. Matches the
     reference UI's "Showing X / Y vehicles" pattern via totalCount."""
-    query = auth_filter(tenant, role)
+    query = auth_filter(tenant, role, segment)
     if chargingStatus:
         query["attributes.chargingStatus"] = chargingStatus
     if trim:
@@ -122,11 +160,11 @@ def search_vehicles(vin: str, tenant: str, role: str, limit: int = Query(10, ge=
 
 
 @app.get("/facets")
-def get_facets(tenant: str, role: str):
+def get_facets(tenant: str, role: str, segment: Optional[str] = None):
     """Filter-panel facet counts -- numeric range buckets + categorical
     counts, scoped to the caller's authorization, computed in a single
     $facet aggregation (notebook Part K)."""
-    query = auth_filter(tenant, role)
+    query = auth_filter(tenant, role, segment)
     result = list(db.assets.aggregate([
         {"$match": query},
         {"$facet": {
@@ -191,3 +229,12 @@ def segment_tree(tenant: str):
 
     roots = by_parent.get(None, [])
     return {"tenant": tenant, "tree": [build(r["_id"]) for r in roots]}
+
+
+# Serve the reference frontend (frontend/index.html) at "/" -- mounted last
+# so it doesn't shadow the API routes above. Running same-origin like this
+# means the frontend doesn't even need the CORS middleware in practice; it's
+# kept above for anyone who wants to serve the frontend separately instead.
+FRONTEND_DIR = ROOT / "frontend"
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
