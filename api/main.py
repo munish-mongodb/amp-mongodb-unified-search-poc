@@ -97,31 +97,51 @@ def list_vehicles(
     segment: Optional[str] = None,
     page: int = Query(1, ge=1),
     pageSize: int = Query(25, ge=1, le=200),
+    # categorical filters -- one per CATEGORICAL_FACETS entry
     chargingStatus: Optional[str] = None,
     trim: Optional[str] = None,
     model: Optional[str] = None,
     assetGroup: Optional[str] = None,
+    year: Optional[int] = None,
+    make: Optional[str] = None,
+    # numeric range filters -- one min/max pair per NUMERIC_FACETS entry
     minSOC: Optional[int] = None,
     maxSOC: Optional[int] = None,
+    minMileage: Optional[int] = None,
+    maxMileage: Optional[int] = None,
+    minDistanceToEmpty: Optional[int] = None,
+    maxDistanceToEmpty: Optional[int] = None,
+    minSpeed: Optional[int] = None,
+    maxSpeed: Optional[int] = None,
+    minSOH: Optional[float] = None,
+    maxSOH: Optional[float] = None,
 ):
     """Paginated vehicle list -- the "Vehicle Tracker" table. Matches the
-    reference UI's "Showing X / Y vehicles" pattern via totalCount."""
+    reference UI's "Showing X / Y vehicles" pattern via totalCount. Filter
+    params mirror every facet in /facets (see CATEGORICAL_FACETS /
+    NUMERIC_FACETS below)."""
     query = auth_filter(tenant, role, segment)
-    if chargingStatus:
-        query["attributes.chargingStatus"] = chargingStatus
-    if trim:
-        query["attributes.trim"] = trim
-    if model:
-        query["attributes.model"] = model
-    if assetGroup:
-        query["attributes.assetGroup"] = assetGroup
-    if minSOC is not None or maxSOC is not None:
-        soc_range = {}
-        if minSOC is not None:
-            soc_range["$gte"] = minSOC
-        if maxSOC is not None:
-            soc_range["$lte"] = maxSOC
-        query["attributes.stateOfCharge"] = soc_range
+    categorical = {"chargingStatus": chargingStatus, "trim": trim, "model": model,
+                   "assetGroup": assetGroup, "year": year, "make": make}
+    for field, value in categorical.items():
+        if value is not None:
+            query[f"attributes.{field}"] = value
+
+    ranges = {
+        "stateOfCharge": (minSOC, maxSOC),
+        "mileage": (minMileage, maxMileage),
+        "distanceToEmptyMiles": (minDistanceToEmpty, maxDistanceToEmpty),
+        "vehicleSpeed": (minSpeed, maxSpeed),
+        "hvBatterySOH": (minSOH, maxSOH),
+    }
+    for field, (lo, hi) in ranges.items():
+        if lo is not None or hi is not None:
+            range_clause = {}
+            if lo is not None:
+                range_clause["$gte"] = lo
+            if hi is not None:
+                range_clause["$lte"] = hi
+            query[f"attributes.{field}"] = range_clause
 
     total = db.assets.count_documents(query)
     docs = list(
@@ -159,41 +179,52 @@ def search_vehicles(vin: str, tenant: str, role: str, limit: int = Query(10, ge=
     return {"vehicles": [{"vin": r["_id"], **r["attributes"]} for r in results]}
 
 
+# Categorical facets: field name -> attributes.<path>
+CATEGORICAL_FACETS = {
+    "chargingStatus": "chargingStatus",
+    "trim": "trim",
+    "model": "model",
+    "assetGroup": "assetGroup",
+    "year": "year",
+    "make": "make",
+}
+# Numeric-range facets: field name -> (attributes.<path>, bucket boundaries)
+NUMERIC_FACETS = {
+    "stateOfChargeBuckets": ("stateOfCharge", [0, 25, 50, 75, 101]),
+    "mileageBuckets": ("mileage", [0, 10000, 30000, 60000, 100000, 1_000_000]),
+    "distanceToEmptyBuckets": ("distanceToEmptyMiles", [0, 50, 100, 150, 200, 1000]),
+    "vehicleSpeedBuckets": ("vehicleSpeed", [0, 1, 26, 51, 76, 1000]),
+    "hvBatterySOHBuckets": ("hvBatterySOH", [78, 85, 90, 95, 100.1]),
+}
+
+
 @app.get("/facets")
 def get_facets(tenant: str, role: str, segment: Optional[str] = None):
     """Filter-panel facet counts -- numeric range buckets + categorical
     counts, scoped to the caller's authorization, computed in a single
-    $facet aggregation (notebook Part K)."""
+    $facet aggregation (notebook Part K). Covers every filter category in
+    the reference UI's filter panel (Name is the one exception -- it's a
+    display label derived from VIN, not a distinct field; VIN search
+    already covers that use case)."""
     query = auth_filter(tenant, role, segment)
-    result = list(db.assets.aggregate([
-        {"$match": query},
-        {"$facet": {
-            "chargingStatus": [{"$sortByCount": "$attributes.chargingStatus"}],
-            "trim": [{"$sortByCount": "$attributes.trim"}],
-            "model": [{"$sortByCount": "$attributes.model"}],
-            "assetGroup": [{"$sortByCount": "$attributes.assetGroup"}],
-            "stateOfChargeBuckets": [{"$bucket": {
-                "groupBy": "$attributes.stateOfCharge", "boundaries": [0, 25, 50, 75, 101],
-                "default": "other", "output": {"count": {"$sum": 1}}}}],
-            "mileageBuckets": [{"$bucket": {
-                "groupBy": "$attributes.mileage", "boundaries": [0, 10000, 30000, 60000, 100000, 1_000_000],
-                "default": "other", "output": {"count": {"$sum": 1}}}}],
-            "totalCount": [{"$count": "n"}],
-        }},
-    ]))[0]
+    facet_stage = {}
+    for name, path in CATEGORICAL_FACETS.items():
+        facet_stage[name] = [{"$sortByCount": f"$attributes.{path}"}]
+    for name, (path, boundaries) in NUMERIC_FACETS.items():
+        facet_stage[name] = [{"$bucket": {
+            "groupBy": f"$attributes.{path}", "boundaries": boundaries,
+            "default": "other", "output": {"count": {"$sum": 1}}}}]
+    facet_stage["totalCount"] = [{"$count": "n"}]
+
+    result = list(db.assets.aggregate([{"$match": query}, {"$facet": facet_stage}]))[0]
 
     def as_dict(bucket_list):
         return {str(b["_id"]): b["count"] for b in bucket_list}
 
-    return {
-        "totalCount": result["totalCount"][0]["n"] if result["totalCount"] else 0,
-        "chargingStatus": as_dict(result["chargingStatus"]),
-        "trim": as_dict(result["trim"]),
-        "model": as_dict(result["model"]),
-        "assetGroup": as_dict(result["assetGroup"]),
-        "stateOfChargeBuckets": as_dict(result["stateOfChargeBuckets"]),
-        "mileageBuckets": as_dict(result["mileageBuckets"]),
-    }
+    out = {"totalCount": result["totalCount"][0]["n"] if result["totalCount"] else 0}
+    for name in list(CATEGORICAL_FACETS) + list(NUMERIC_FACETS):
+        out[name] = as_dict(result[name])
+    return out
 
 
 @app.get("/segments/tree")

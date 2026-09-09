@@ -219,12 +219,12 @@ async function loadVehicles() {
     document.getElementById("pageInfo").textContent = "";
     return;
   }
-  const params = {
-    ...baseParams(), page: state.page, pageSize: state.pageSize,
-    chargingStatus: state.filters.chargingStatus, trim: state.filters.trim,
-    model: state.filters.model, assetGroup: state.filters.assetGroup,
-    minSOC: state.filters.minSOC, maxSOC: state.filters.maxSOC,
-  };
+  const params = { ...baseParams(), page: state.page, pageSize: state.pageSize };
+  for (const [key] of CATEGORICAL_FACETS) params[key] = state.filters[key];
+  for (const cfg of Object.values(NUMERIC_FACETS)) {
+    params[cfg.minParam] = state.filters[cfg.minParam];
+    params[cfg.maxParam] = state.filters[cfg.maxParam];
+  }
   const data = await api("/vehicles", params);
   renderTable(data.vehicles);
   document.getElementById("countText").textContent = `Showing ${data.vehicles.length} / ${data.totalCount} vehicles`;
@@ -262,53 +262,108 @@ function renderTable(vehicles) {
 }
 
 // ---------- facets / filter drawer ----------
+// Categorical facets: API field name -> display label. Matches
+// CATEGORICAL_FACETS in api/main.py.
+const CATEGORICAL_FACETS = [
+  ["chargingStatus", "Charging Status"], ["trim", "Trim"], ["model", "Model"],
+  ["year", "Year"], ["make", "Make"], ["assetGroup", "Asset Group"],
+];
+
+// Numeric-range facets: API field name -> {minParam, maxParam, label, buckets}.
+// `buckets` maps each $bucket lower-bound key (as returned by /facets) to a
+// {label, min, max} filter range -- must match NUMERIC_FACETS' boundaries
+// in api/main.py. `max: null` means unbounded (no upper limit sent).
+const NUMERIC_FACETS = {
+  stateOfChargeBuckets: {
+    minParam: "minSOC", maxParam: "maxSOC", label: "State of Charge",
+    buckets: { "0": ["0-24%", 0, 24], "25": ["25-49%", 25, 49], "50": ["50-74%", 50, 74], "75": ["75-100%", 75, 100] },
+  },
+  mileageBuckets: {
+    minParam: "minMileage", maxParam: "maxMileage", label: "Mileage",
+    buckets: {
+      "0": ["0-10K mi", 0, 9999], "10000": ["10K-30K mi", 10000, 29999],
+      "30000": ["30K-60K mi", 30000, 59999], "60000": ["60K-100K mi", 60000, 99999],
+      "100000": ["100K+ mi", 100000, null],
+    },
+  },
+  distanceToEmptyBuckets: {
+    minParam: "minDistanceToEmpty", maxParam: "maxDistanceToEmpty", label: "Distance to Empty",
+    buckets: {
+      "0": ["0-49 mi", 0, 49], "50": ["50-99 mi", 50, 99], "100": ["100-149 mi", 100, 149],
+      "150": ["150-199 mi", 150, 199], "200": ["200+ mi", 200, null],
+    },
+  },
+  vehicleSpeedBuckets: {
+    minParam: "minSpeed", maxParam: "maxSpeed", label: "Vehicle Speed",
+    buckets: {
+      "0": ["Parked (0 mph)", 0, 0], "1": ["1-25 mph", 1, 25], "26": ["26-50 mph", 26, 50],
+      "51": ["51-75 mph", 51, 75], "76": ["76+ mph", 76, null],
+    },
+  },
+  hvBatterySOHBuckets: {
+    minParam: "minSOH", maxParam: "maxSOH", label: "HV Battery SOH",
+    buckets: {
+      "78": ["78-84%", 78, 84.9], "85": ["85-89%", 85, 89.9],
+      "90": ["90-94%", 90, 94.9], "95": ["95-100%", 95, 100],
+    },
+  },
+};
+
 async function loadFacets() {
   const data = await api("/facets", baseParams());
   const container = document.getElementById("facetContainer");
   container.innerHTML = "";
 
-  const categorical = [
-    ["chargingStatus", "Charging Status"], ["trim", "Trim"], ["model", "Model"], ["assetGroup", "Asset Group"],
-  ];
-  for (const [key, label] of categorical) {
+  for (const [key, label] of CATEGORICAL_FACETS) {
     const det = document.createElement("details");
     det.className = "facet-group";
     det.open = true;
     const options = Object.entries(data[key] || {}).map(([val, count]) => {
-      const selected = state.filters[key] === val;
+      const selected = String(state.filters[key]) === String(val);
       return `<div class="facet-option ${selected ? "selected" : ""}" data-key="${key}" data-val="${val}">
         <span>${val}</span><span class="cnt">${count}</span></div>`;
     }).join("");
-    det.innerHTML = `<summary>${label}</summary>${options}`;
+    det.innerHTML = `<summary>${label}</summary>${options || '<div class="facet-option">(no data)</div>'}`;
     container.appendChild(det);
   }
 
-  const socDet = document.createElement("details");
-  socDet.className = "facet-group";
-  socDet.open = true;
-  const socLabels = { "0": "0-24%", "25": "25-49%", "50": "50-74%", "75": "75-100%" };
-  const socOptions = Object.entries(data.stateOfChargeBuckets || {}).map(([bucket, count]) => {
-    const [min, max] = { "0": [0, 25], "25": [25, 50], "50": [50, 75], "75": [75, 101] }[bucket] || [0, 101];
-    const selected = state.filters.minSOC == min && state.filters.maxSOC == (max - 1);
-    return `<div class="facet-option ${selected ? "selected" : ""}" data-soc-min="${min}" data-soc-max="${max - 1}">
-      <span>${socLabels[bucket] || bucket}</span><span class="cnt">${count}</span></div>`;
-  }).join("");
-  socDet.innerHTML = `<summary>State of Charge</summary>${socOptions}`;
-  container.appendChild(socDet);
+  for (const [facetKey, cfg] of Object.entries(NUMERIC_FACETS)) {
+    const det = document.createElement("details");
+    det.className = "facet-group";
+    det.open = true;
+    const options = Object.entries(data[facetKey] || {}).map(([bucketKey, count]) => {
+      const bucketDef = cfg.buckets[bucketKey];
+      if (!bucketDef) return "";
+      const [bucketLabel, min, max] = bucketDef;
+      const selected = String(state.filters[cfg.minParam]) === String(min)
+        && String(state.filters[cfg.maxParam] ?? "") === String(max ?? "");
+      return `<div class="facet-option ${selected ? "selected" : ""}"
+        data-min-param="${cfg.minParam}" data-max-param="${cfg.maxParam}"
+        data-min="${min}" data-max="${max ?? ""}">
+        <span>${bucketLabel}</span><span class="cnt">${count}</span></div>`;
+    }).join("");
+    det.innerHTML = `<summary>${cfg.label}</summary>${options}`;
+    container.appendChild(det);
+  }
 
   container.querySelectorAll(".facet-option[data-key]").forEach(el => {
     el.addEventListener("click", () => {
       const key = el.dataset.key, val = el.dataset.val;
-      state.filters[key] = state.filters[key] === val ? undefined : val;
+      state.filters[key] = String(state.filters[key]) === String(val) ? undefined : val;
       state.page = 1;
       loadVehicles(); loadFacets();
     });
   });
-  container.querySelectorAll(".facet-option[data-soc-min]").forEach(el => {
+  container.querySelectorAll(".facet-option[data-min-param]").forEach(el => {
     el.addEventListener("click", () => {
-      const min = el.dataset.socMin, max = el.dataset.socMax;
-      if (state.filters.minSOC == min) { state.filters.minSOC = undefined; state.filters.maxSOC = undefined; }
-      else { state.filters.minSOC = min; state.filters.maxSOC = max; }
+      const { minParam, maxParam, min, max } = el.dataset;
+      const alreadySelected = String(state.filters[minParam]) === String(min)
+        && String(state.filters[maxParam] ?? "") === String(max ?? "");
+      if (alreadySelected) {
+        state.filters[minParam] = undefined; state.filters[maxParam] = undefined;
+      } else {
+        state.filters[minParam] = min; state.filters[maxParam] = max || undefined;
+      }
       state.page = 1;
       loadVehicles(); loadFacets();
     });
