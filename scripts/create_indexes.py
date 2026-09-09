@@ -66,13 +66,29 @@ def main() -> None:
 
     # 1. Operational compound index for authorization (REQ-01), scoped to the
     # segmentAssignments array only (see module docstring re: parallel arrays).
+    #
+    # Just {tenantId, authorizedRolesOrTeams} -- NOT a third trailing field
+    # like the original attributes.make. That trailing field was live-tested
+    # and found useless: every vehicle's make is "RIVIAN" (Rivian is the only
+    # OEM in this model), so it contributed zero selectivity while still
+    # being maintained on every write. explain() on the real query shapes
+    # api/main.py actually runs (auth filter + assorted attribute filters)
+    # confirmed this: a narrow team-level role query (514 candidates) uses
+    # this 2-field index efficiently (514 docs examined for 104 results); a
+    # broad admin-level role (10,000 candidates) can't do better than
+    # scanning its candidate set regardless of which index is chosen, since
+    # arbitrary attribute filters can't all be pre-indexed together --
+    # that's inherent to faceted/multi-attribute filtering, not a fixable
+    # index problem at this data volume.
+    old_index_names = {i["name"] for i in coll.list_indexes()}
+    if "segment_auth_make_idx" in old_index_names:
+        coll.drop_index("segment_auth_make_idx")
+        print("Dropped stale index: segment_auth_make_idx (trailing attributes.make field was dead weight)")
     coll.create_index(
-        [("segmentAssignments.tenantId", ASCENDING),
-         ("segmentAssignments.authorizedRolesOrTeams", ASCENDING),
-         ("attributes.make", ASCENDING)],
-        name="segment_auth_make_idx",
+        [("segmentAssignments.tenantId", ASCENDING), ("segmentAssignments.authorizedRolesOrTeams", ASCENDING)],
+        name="segment_auth_idx",
     )
-    print("Created operational index: segment_auth_make_idx")
+    print("Created operational index: segment_auth_idx")
 
     # 1a. Separate single-field index on tenantIds for simple tenant-membership
     # lookups (e.g. "does tenant X have any relationship to this asset at
@@ -87,6 +103,22 @@ def main() -> None:
     # single-field index per attribute per type.
     coll.create_index([("attributes.$**", ASCENDING)], name="attributes_wildcard_idx")
     print("Created wildcard index: attributes_wildcard_idx")
+
+    # 1c. asset_segments and tenant_transfer_events had ZERO indexes beyond
+    # _id until this pass -- invisible at ~100 segments / a handful of
+    # transfer events, but every hierarchy-browsing and audit-log query was
+    # a full COLLSCAN (confirmed live via explain()). Won't matter until
+    # segment/tenant count or transfer-event volume grows, but it's the
+    # correct baseline, not a premature optimization.
+    segs = db.asset_segments
+    segs.create_index([("tenantId", ASCENDING)], name="segment_tenant_idx")
+    segs.create_index([("hierarchy.path", ASCENDING)], name="segment_path_idx")
+    print("Created asset_segments indexes: segment_tenant_idx, segment_path_idx")
+
+    events = db.tenant_transfer_events
+    events.create_index([("assetId", ASCENDING), ("timestamp", -1)], name="transfer_asset_history_idx")
+    events.create_index([("toTenantId", ASCENDING), ("timestamp", -1)], name="transfer_to_tenant_idx")
+    print("Created tenant_transfer_events indexes: transfer_asset_history_idx, transfer_to_tenant_idx")
 
     existing = {i["name"] for i in list_search_indexes_retry(coll)}
 

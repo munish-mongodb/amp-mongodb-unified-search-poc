@@ -29,13 +29,15 @@ Schema v2 (vs. the original POC):
 """
 from __future__ import annotations
 
+SCHEMA_VERSION = 2  # bump and add a migration note here whenever the shape changes
+
 TENANTS = [
-    {"_id": "rivian_oem", "name": "Rivian Automotive (OEM)", "type": "oem"},
-    {"_id": "acme_fleet_corp", "name": "Acme Fleet Corp", "type": "fleet_customer"},
-    {"_id": "globex_logistics", "name": "Globex Logistics", "type": "fleet_customer"},
-    {"_id": "amazon_logistics", "name": "Amazon Logistics", "type": "fleet_customer"},
-    {"_id": "dhl_express_fleet", "name": "DHL Express Fleet", "type": "fleet_customer"},
-    {"_id": "driveshare_rentals", "name": "DriveShare Rentals", "type": "fleet_customer"},
+    {"_id": "rivian_oem", "name": "Rivian Automotive (OEM)", "type": "oem", "schemaVersion": SCHEMA_VERSION},
+    {"_id": "acme_fleet_corp", "name": "Acme Fleet Corp", "type": "fleet_customer", "schemaVersion": SCHEMA_VERSION},
+    {"_id": "globex_logistics", "name": "Globex Logistics", "type": "fleet_customer", "schemaVersion": SCHEMA_VERSION},
+    {"_id": "amazon_logistics", "name": "Amazon Logistics", "type": "fleet_customer", "schemaVersion": SCHEMA_VERSION},
+    {"_id": "dhl_express_fleet", "name": "DHL Express Fleet", "type": "fleet_customer", "schemaVersion": SCHEMA_VERSION},
+    {"_id": "driveshare_rentals", "name": "DriveShare Rentals", "type": "fleet_customer", "schemaVersion": SCHEMA_VERSION},
 ]
 
 # Maps a vehicle's attributes.model to the Rivian OEM vehicle-line segment it
@@ -70,6 +72,7 @@ def materialize_segment_tree(nodes: list[dict]) -> list[dict]:
         path = "," + ",".join(ancestors + [n["_id"]]) + ","
         doc = {k: v for k, v in n.items() if k != "parentId"}
         doc.setdefault("grantedRoles", [])
+        doc.setdefault("schemaVersion", SCHEMA_VERSION)
         doc["hierarchy"] = {"parentId": n.get("parentId"), "ancestors": ancestors, "path": path}
         out.append(doc)
     return out

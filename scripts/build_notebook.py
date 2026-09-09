@@ -371,16 +371,56 @@ except OperationFailure as e:
     print(f"Insert failed as expected: {e}")
 test.drop()""")
 
-code(r"""db.assets.create_index(
-    [("segmentAssignments.tenantId", ASCENDING),
-     ("segmentAssignments.authorizedRolesOrTeams", ASCENDING),
-     ("attributes.make", ASCENDING)],
-    name="segment_auth_make_idx",
+code(r"""old_names = {i["name"] for i in db.assets.list_indexes()}
+if "segment_auth_make_idx" in old_names:
+    db.assets.drop_index("segment_auth_make_idx")
+    print("Dropped stale index: segment_auth_make_idx")
+
+db.assets.create_index(
+    [("segmentAssignments.tenantId", ASCENDING), ("segmentAssignments.authorizedRolesOrTeams", ASCENDING)],
+    name="segment_auth_idx",
 )
-print("Created operational index: segment_auth_make_idx")
+print("Created operational index: segment_auth_idx")
 
 db.assets.create_index([("tenantIds", ASCENDING)], name="tenant_ids_idx")
 print("Created index: tenant_ids_idx (simple tenant-membership lookups, kept separate to avoid the parallel-arrays restriction above)")""")
+
+md(r"""### C1a-note. Why this index has only 2 fields, not 3
+
+An earlier version of this index had a third trailing field,
+`attributes.make`. Live `explain()` testing (below) showed it was dead
+weight: every vehicle's make is `"RIVIAN"` (Rivian is the only OEM in this
+model), so it contributed zero selectivity while still being maintained on
+every write.
+
+The real, measured picture: for a **narrow** role (a single team, ~500
+vehicles), this 2-field index is highly selective and gets chosen
+automatically. For a **broad** role (`role_fleet_admin`, ~10,000 vehicles),
+no index -- this one or any other -- can avoid scanning roughly the
+candidate-set size once you add arbitrary attribute filters on top, because
+those filters weren't all indexed together. That's inherent to
+faceted/multi-attribute filtering, not a fixable index problem at this data
+volume; adding a dedicated compound index per filter combination doesn't
+scale (10 optional filter fields -> a combinatorial index explosion).""")
+
+code(r"""narrow_query = {
+    "segmentAssignments": {"$elemMatch": {"tenantId": "amazon_logistics",
+                                           "authorizedRolesOrTeams": "team_amazon_logistics_0_0_0"}},
+    "attributes.chargingStatus": "Ready to Charge",
+}
+broad_query = {
+    "segmentAssignments": {"$elemMatch": {"tenantId": "amazon_logistics", "authorizedRolesOrTeams": "role_fleet_admin"}},
+    "attributes.chargingStatus": "Ready to Charge",
+}
+
+for label, q in [("narrow (single team, ~500 vehicles)", narrow_query), ("broad (role_fleet_admin, ~10,000 vehicles)", broad_query)]:
+    plan = db.assets.find(q).explain()
+    stats = plan["executionStats"]
+    winner = plan["queryPlanner"]["winningPlan"]
+    index_used = winner.get("inputStage", {}).get("indexName", winner.get("indexName", "COLLSCAN"))
+    ratio = stats["totalDocsExamined"] / max(1, stats["nReturned"])
+    print(f"{label}:")
+    print(f"  index={index_used}  nReturned={stats['nReturned']}  docsExamined={stats['totalDocsExamined']}  overscan={ratio:.1f}x  ms={stats['executionTimeMillis']}")""")
 
 md(r"""### C1b. Wildcard index over polymorphic attributes (Attribute Pattern)
 
@@ -552,6 +592,33 @@ print("assets_text_search_index is QUERYABLE.")
 wait_for_index(db.assets, "assets_vin_autocomplete_index")
 print("assets_vin_autocomplete_index is QUERYABLE.")""")
 
+md(r"""### C5. Indexes on `asset_segments` and `tenant_transfer_events`
+
+These two collections had **zero indexes beyond `_id`** through the whole
+schema v2 pass until now -- invisible at ~100 segments and a handful of
+transfer events, but confirmed live via `explain()` to be full `COLLSCAN`s
+for every hierarchy-browsing query (`tenantId` lookups, the `hierarchy.path`
+prefix query from Part D) and every transfer-audit lookup. Won't matter
+until segment/tenant count or transfer-event volume grows, but it's the
+correct baseline, not a premature optimization -- and it's the kind of gap
+that's easy to miss because collections outside the main hot-path table
+don't show up in day-to-day query latency until they do.""")
+
+code(r"""before = db.asset_segments.find({"tenantId": "amazon_logistics"}).explain()
+print("asset_segments tenantId lookup BEFORE index:", before["queryPlanner"]["winningPlan"]["stage"])
+
+db.asset_segments.create_index([("tenantId", ASCENDING)], name="segment_tenant_idx")
+db.asset_segments.create_index([("hierarchy.path", ASCENDING)], name="segment_path_idx")
+print("Created asset_segments indexes: segment_tenant_idx, segment_path_idx")
+
+db.tenant_transfer_events.create_index([("assetId", ASCENDING), ("timestamp", -1)], name="transfer_asset_history_idx")
+db.tenant_transfer_events.create_index([("toTenantId", ASCENDING), ("timestamp", -1)], name="transfer_to_tenant_idx")
+print("Created tenant_transfer_events indexes: transfer_asset_history_idx, transfer_to_tenant_idx")
+
+after = db.asset_segments.find({"tenantId": "amazon_logistics"}).explain()
+after_stage = after["queryPlanner"]["winningPlan"].get("inputStage", after["queryPlanner"]["winningPlan"])
+print("asset_segments tenantId lookup AFTER index: ", after_stage["stage"], "/ index:", after_stage.get("indexName"))""")
+
 # ---------------------------------------------------------------------------
 md(r"""## Part D -- Single-pass authorization + fan-out benchmark at scale (REQ-01)
 
@@ -712,6 +779,61 @@ doc = db.assets.find_one({"_id": VIN})
 print(f"\n{VIN} tenantIds: {doc['tenantIds']}")
 for sa in doc["segmentAssignments"]:
     print(f"  tenant={sa['tenantId']:<18} segment={sa['segmentId']:<20} roles={sa['authorizedRolesOrTeams']}")""")
+
+# ---------------------------------------------------------------------------
+md(r"""## Part D3 -- Pagination at scale: skip/limit vs. range-based
+
+`api/main.py`'s `/vehicles` endpoint pages with `.skip().limit()`, matching
+the reference UI's page-number pagination. That's the right call for a
+page-number UI, but it's worth being honest about its known cost: MongoDB
+still has to walk and discard every skipped document even with a covering
+index, so cost grows with page depth, not just page size.
+
+Measured live (not a manual assertion): later pages against a ~10,000-doc
+tenant-scoped candidate set cost meaningfully more than earlier ones. At
+this data volume it's a difference of tens of milliseconds, not a
+production incident -- but the trend is real, and it would compound badly
+at millions of documents or very deep pagination. The standard fix is
+**range-based (keyset) pagination** -- filter on `_id > lastSeenId` sorted
+by `_id`, instead of skipping N documents -- which costs the same regardless
+of how deep into the result set you are, at the cost of losing direct
+"jump to page N" navigation. `api/main.py` exposes both: `page`/`pageSize`
+for the UI's page-number navigation, and an `afterId` cursor param as the
+scalable alternative for programmatic/infinite-scroll consumers.""")
+
+code(r"""query = {"segmentAssignments": {"$elemMatch": {"tenantId": "amazon_logistics", "authorizedRolesOrTeams": "role_fleet_admin"}}}
+page_size = 25
+depths = [1, 50, 200, 399]
+
+print("--- skip/limit cost by page depth (one query per page, cold) ---")
+for page in depths:
+    t0 = time.perf_counter()
+    docs = list(db.assets.find(query, {"_id": 1}).sort("_id", 1).skip((page - 1) * page_size).limit(page_size))
+    ms = (time.perf_counter() - t0) * 1000
+    print(f"  page {page:4} (skip={((page - 1) * page_size):6}): {ms:6.1f}ms, {len(docs)} docs")
+
+# Fair comparison for range-based (keyset) pagination: keyset pagination is
+# inherently sequential -- you can't jump to "page 399" without having
+# already walked there, that's its whole trade-off vs. skip/limit. So for
+# each depth checkpoint, find the boundary _id an untimed skip would land on
+# (simulating "we already paged this far"), then time ONLY the next fetch
+# from that cursor -- an apples-to-apples "cost of retrieving this page"
+# comparison, not conflating cursor-walking cost with fetch cost.
+print("\n--- range-based (keyset) cost at equivalent depth (boundary found untimed, only the fetch is timed) ---")
+for page in depths:
+    boundary = list(db.assets.find(query, {"_id": 1}).sort("_id", 1).skip((page - 1) * page_size).limit(1))
+    cursor_id = boundary[0]["_id"] if boundary else None
+    t0 = time.perf_counter()
+    range_query = dict(query)
+    if cursor_id:
+        range_query["_id"] = {"$gte": cursor_id}
+    docs = list(db.assets.find(range_query, {"_id": 1}).sort("_id", 1).limit(page_size))
+    ms = (time.perf_counter() - t0) * 1000
+    print(f"  page {page:4} (cursor >= {str(cursor_id):<16}): {ms:6.1f}ms, {len(docs)} docs")
+print("\n(range-based fetch cost stays roughly flat regardless of depth; skip/limit's grows with")
+print("page number -- but note range-based requires already knowing the boundary _id, which is")
+print("exactly what makes it sequential-only: fine for 'next page' navigation, not for jumping")
+print("directly to page 399.)")""")
 
 # ---------------------------------------------------------------------------
 md(r"""## Part H -- Rule-based segments: dynamic membership (REQ-07)

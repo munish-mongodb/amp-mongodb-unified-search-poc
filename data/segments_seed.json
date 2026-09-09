@@ -1,7 +1,7 @@
 [
   {
     "_id": "seg_global",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "acme_fleet_corp",
     "name": "Global",
     "segmentType": "global",
@@ -19,7 +19,7 @@
   },
   {
     "_id": "seg_us_west",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "acme_fleet_corp",
     "name": "US West Region",
     "segmentType": "super_region",
@@ -37,7 +37,7 @@
   },
   {
     "_id": "seg_california",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "acme_fleet_corp",
     "name": "California",
     "segmentType": "state",
@@ -56,7 +56,7 @@
   },
   {
     "_id": "seg_california_north",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "acme_fleet_corp",
     "name": "Northern California Fleet Operations",
     "segmentType": "region",
@@ -78,7 +78,7 @@
   },
   {
     "_id": "seg_hayward_team",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "acme_fleet_corp",
     "name": "Hayward Depot Team",
     "segmentType": "team",
@@ -101,7 +101,7 @@
   },
   {
     "_id": "seg_san_jose_team",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "acme_fleet_corp",
     "name": "San Jose Depot Team",
     "segmentType": "team",
@@ -124,7 +124,7 @@
   },
   {
     "_id": "seg_texas",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "acme_fleet_corp",
     "name": "Texas",
     "segmentType": "state",
@@ -144,7 +144,7 @@
   },
   {
     "_id": "seg_austin_team",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "acme_fleet_corp",
     "name": "Austin Depot Team",
     "segmentType": "team",
@@ -165,7 +165,7 @@
   },
   {
     "_id": "seg_globex_global",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "globex_logistics",
     "name": "Global",
     "segmentType": "global",
@@ -183,7 +183,7 @@
   },
   {
     "_id": "seg_globex_midwest",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "globex_logistics",
     "name": "Midwest Region",
     "segmentType": "region",
@@ -203,7 +203,7 @@
   },
   {
     "_id": "seg_ca_north_restricted",
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "tenantId": "acme_fleet_corp",
     "name": "Confidential Safety Hold",
     "segmentType": "restricted",
@@ -236,7 +236,8 @@
       "parentId": null,
       "ancestors": [],
       "path": ",seg_rivian_global,"
-    }
+    },
+    "schemaVersion": 2
   },
   {
     "_id": "seg_rivian_line_r1t",
@@ -255,7 +256,8 @@
         "seg_rivian_global"
       ],
       "path": ",seg_rivian_global,seg_rivian_line_r1t,"
-    }
+    },
+    "schemaVersion": 2
   },
   {
     "_id": "seg_rivian_line_r1s",
@@ -274,7 +276,8 @@
         "seg_rivian_global"
       ],
       "path": ",seg_rivian_global,seg_rivian_line_r1s,"
-    }
+    },
+    "schemaVersion": 2
   },
   {
     "_id": "seg_rivian_line_rpv",
@@ -293,6 +296,7 @@
         "seg_rivian_global"
       ],
       "path": ",seg_rivian_global,seg_rivian_line_rpv,"
-    }
+    },
+    "schemaVersion": 2
   }
 ]

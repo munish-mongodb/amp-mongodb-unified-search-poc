@@ -97,6 +97,7 @@ def list_vehicles(
     segment: Optional[str] = None,
     page: int = Query(1, ge=1),
     pageSize: int = Query(25, ge=1, le=200),
+    afterId: Optional[str] = None,
     # categorical filters -- one per CATEGORICAL_FACETS entry
     chargingStatus: Optional[str] = None,
     trim: Optional[str] = None,
@@ -119,7 +120,19 @@ def list_vehicles(
     """Paginated vehicle list -- the "Vehicle Tracker" table. Matches the
     reference UI's "Showing X / Y vehicles" pattern via totalCount. Filter
     params mirror every facet in /facets (see CATEGORICAL_FACETS /
-    NUMERIC_FACETS below)."""
+    NUMERIC_FACETS below).
+
+    Two pagination modes:
+    - `page`/`pageSize` (default): skip/limit, for the UI's page-number
+      navigation. Cost grows with page depth -- fine at this data volume
+      (measured live in notebook Part D3), a real concern at much larger
+      scale or very deep pagination.
+    - `afterId`: range/keyset pagination (`_id > afterId`, sorted by `_id`).
+      Cost stays flat regardless of depth, at the cost of no direct
+      "jump to page N" -- the right choice for programmatic/infinite-scroll
+      consumers, not exposed in this reference UI but proven out in the
+      notebook alongside the skip/limit comparison.
+    """
     query = auth_filter(tenant, role, segment)
     categorical = {"chargingStatus": chargingStatus, "trim": trim, "model": model,
                    "assetGroup": assetGroup, "year": year, "make": make}
@@ -144,8 +157,18 @@ def list_vehicles(
             query[f"attributes.{field}"] = range_clause
 
     total = db.assets.count_documents(query)
+
+    if afterId is not None:
+        cursor_query = dict(query)
+        cursor_query["_id"] = {"$gt": afterId}
+        docs = list(db.assets.find(cursor_query, {"_id": 1, "attributes": 1}).sort("_id", 1).limit(pageSize))
+        vehicles = [{"vin": d["_id"], **d["attributes"]} for d in docs]
+        return {"pageSize": pageSize, "totalCount": total, "vehicles": vehicles,
+                "nextAfterId": docs[-1]["_id"] if docs else None}
+
     docs = list(
         db.assets.find(query, {"_id": 1, "attributes": 1})
+        .sort("_id", 1)
         .skip((page - 1) * pageSize)
         .limit(pageSize)
     )

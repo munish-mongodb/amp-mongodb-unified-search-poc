@@ -165,10 +165,14 @@ added and verified live against the cluster:
   `asset_segments` and `assets` into one collection would add complexity
   (a `docType` discriminator, mixed indexes) for a join that never happens.
 
-## Two real "gotchas" found building this at scale
+## Data layer audit: gotchas and optimizations found by testing, not review
 
-Both surfaced by actually running against a live 50K-document collection,
-not from documentation:
+Everything below was found by actually running `explain()` against the live
+50K-document collection and measuring real numbers -- not a paper schema
+review. Each one is demonstrated live in the notebook (Parts C1, C1a-note,
+C5, D3).
+
+### Gotchas (things that would silently break or reject data)
 
 1. **MongoDB rejects a compound index across two different array fields.**
    `tenantIds` and `segmentAssignments` are both arrays on the same asset
@@ -189,6 +193,72 @@ not from documentation:
    This isn't clearly documented anywhere; found by bisecting a hybrid
    search query that returned 10 results with a plain `$elemMatch` `find()`
    but 0 results through `$search`.
+
+### Optimizations found by measuring, not guessing
+
+3. **The operational auth index had a dead trailing field.** The original
+   3-field index ended in `attributes.make` -- but every vehicle's make is
+   `"RIVIAN"` (Rivian is the only OEM here), so that field contributed zero
+   selectivity while still being maintained on every write. Dropped it down
+   to a clean 2-field `segment_auth_idx`. Measured impact of the *real*
+   query patterns the API runs: a narrow team-level role (~500-vehicle
+   candidate set) gets a ~5x overscan ratio from this index; a broad
+   tenant-wide admin role (~10,000 candidates) can't do meaningfully better
+   with *any* index once arbitrary attribute filters are layered on top --
+   that's inherent to faceted/multi-attribute filtering (10 optional filter
+   fields don't compose into one compound index without a combinatorial
+   explosion), not a fixable index problem at this data volume.
+4. **`asset_segments` and `tenant_transfer_events` had zero indexes beyond
+   `_id`.** Invisible at ~100 segments and a handful of transfer events
+   (both fully scan in a few milliseconds regardless), but confirmed live
+   via `explain()` to be `COLLSCAN`s for every hierarchy-browsing query and
+   every audit-log lookup. Added `segment_tenant_idx`, `segment_path_idx`
+   on `asset_segments`, and `transfer_asset_history_idx`,
+   `transfer_to_tenant_idx` on `tenant_transfer_events` -- the correct
+   baseline for collections outside the main hot-path table, which are
+   easy to overlook precisely because they don't show up in day-to-day
+   query latency until they do.
+5. **Pagination: `skip/limit` cost grows with page depth; measured, not
+   assumed.** At page 399 (skip=9,950) against a ~10,000-doc candidate set,
+   `skip/limit` took ~101ms vs. ~50ms for page 1 -- a real, if modest,
+   growth trend that would compound badly at millions of documents or much
+   deeper pagination. Added `afterId` range/keyset pagination as an
+   alternative on `/vehicles` (`_id > afterId`, sorted by `_id`), which
+   measured flat (~42-52ms) regardless of depth -- at the cost of losing
+   direct "jump to page N" navigation, which is why the reference UI still
+   uses page-number pagination and `afterId` is offered as the scalable
+   option for programmatic consumers.
+6. **`schemaVersion` was inconsistently applied.** Segments/tenants created
+   programmatically (`scripts/topology.py`) didn't get a `schemaVersion`
+   field at all, while the curated fixture had a stale value left over from
+   an earlier migration. Centralized it as a single `SCHEMA_VERSION`
+   constant in `topology.py`, applied via `materialize_segment_tree()` and
+   the `TENANTS` list, so it can't drift between the programmatic and
+   curated paths again.
+
+### Patterns already correctly applied, confirmed on review
+
+- **Subset Pattern**: `/vehicles`' list query projects only `{_id,
+  attributes}`, never `segmentAssignments` -- the list view doesn't need
+  the full authorization/hierarchy payload per row, just the display
+  fields. Already true before this review; confirmed as correct rather
+  than an oversight.
+- **Computed Pattern**: `authorizedRolesOrTeams` (see "Schema design
+  patterns" below) remains the main computed field; no new candidates for
+  this pattern emerged from the review.
+
+### Considered, not implemented (documented rather than built)
+
+- **Bucket / Time Series Pattern for telemetry history.** This schema only
+  stores each vehicle's *current* telemetry snapshot (`stateOfCharge`,
+  `mileage`, `vehicleSpeed`, etc.) -- there's no history of how those
+  values changed over time. A real fleet-telemetry system would almost
+  certainly want a native MongoDB **time series collection** for that
+  (readings ingested continuously, bucketed internally by time), kept
+  separate from the "current state" snapshot on the asset document. Out of
+  scope for this pass (would need a redesign plus synthetic historical
+  data with no additional schema-design signal to prove), but worth
+  flagging as the obvious next real gap if this went to production.
 
 ## Repo layout
 
@@ -271,6 +341,7 @@ curl "http://localhost:8000/tenants"
 curl "http://localhost:8000/tenants/amazon_logistics/roles"
 curl "http://localhost:8000/vehicles?tenant=amazon_logistics&role=role_fleet_admin&page=1&pageSize=10"
 curl "http://localhost:8000/vehicles?tenant=amazon_logistics&role=role_fleet_admin&segment=seg_amazon_logistics_region0_depot1"
+curl "http://localhost:8000/vehicles?tenant=amazon_logistics&role=role_fleet_admin&pageSize=10&afterId=VIN_SCALE_000010"  # keyset pagination, see "Data layer audit" below
 curl "http://localhost:8000/facets?tenant=amazon_logistics&role=role_fleet_admin"
 curl "http://localhost:8000/segments/tree?tenant=amazon_logistics"
 curl "http://localhost:8000/vehicles/search?vin=6493&tenant=amazon_logistics&role=role_fleet_admin"
