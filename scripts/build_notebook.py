@@ -1060,26 +1060,79 @@ md(r"""## Part L -- VIN substring search (REQ-10)
 
 Matches the reference UI's search box behavior: typing a substring
 ("6493") returns every VIN containing it anywhere, not just ones starting
-with it. Uses the `assets_vin_autocomplete_index` built in Part C2b.""")
+with it. Uses the `assets_vin_autocomplete_index` built in Part C2b --
+**for short queries only**. Real bug found by testing, not review: pasting
+a *full* VIN into the search box returned dozens of unrelated vehicles,
+all with the identical relevance score.""")
 
 code(r"""sample = db.assets.find_one({"attributes.vin": {"$exists": True}})
-vin = sample["attributes"]["vin"]
-substring = vin[5:11]
-print(f"Sample VIN: {vin} -- searching for substring: {substring!r}\n")
+short_query = sample["attributes"]["vin"][5:11]
+full_vin_query = sample["attributes"]["vin"]
+
+def autocomplete_search(query, limit=10):
+    return list(db.assets.aggregate([
+        {"$search": {
+            "index": "assets_vin_autocomplete_index",
+            "compound": {"must": [{"autocomplete": {"query": query, "path": "attributes.vin"}}]},
+        }},
+        {"$limit": limit},
+        {"$project": {"attributes.vin": 1, "score": {"$meta": "searchScore"}}},
+    ]))
+
+print(f"Short substring query {short_query!r} (<= maxGrams=7):")
+short_results = autocomplete_search(short_query)
+for r in short_results:
+    print(f"  {r['attributes']['vin']}  score={r['score']:.6f}")
+true_matches = [r for r in short_results if short_query.lower() in r["attributes"]["vin"].lower()]
+print(f"-> {len(true_matches)}/{len(short_results)} are genuine substring matches. Correct.")
+
+print(f"\nFull VIN query {full_vin_query!r} (17 chars, > maxGrams=7):")
+full_results = autocomplete_search(full_vin_query, limit=500)
+scores = {r["score"] for r in full_results}
+true_matches_full = [r for r in full_results if full_vin_query.lower() in r["attributes"]["vin"].lower()]
+print(f"-> {len(full_results)} candidates returned, all with score(s) {scores}")
+print(f"-> only {len(true_matches_full)} of them are genuine full-string matches -- the rest are false")
+print("   positives. The operator fragments a query longer than maxGrams into its own")
+print("   3-7 character grams and matches documents sharing ANY one of them, not the")
+print("   literal full string -- so it can't reliably represent a query longer than")
+print("   its own configured grams, and every synthetic VIN here also shares a literal")
+print("   7-character prefix (realistic -- real VINs share a manufacturer WMI code")
+print("   across a whole fleet too), which makes the false-positive rate especially bad.")""")
+
+md(r"""### The fix: `autocomplete` for short queries, exact regex-after-auth-filter for longer ones
+
+`autocomplete` stays index-backed and fast for genuinely short, typeahead-
+style input (proven correct above). For anything longer than `maxGrams`,
+fall back to the same auth-filter index used everywhere else in this
+project to narrow to the tenant's candidate set first, then an exact
+case-insensitive substring match within it -- guaranteed correct, and fast
+enough at this data volume without needing search-index tuning. This is
+exactly what `api/main.py`'s `/vehicles/search` does
+(`VIN_AUTOCOMPLETE_MAX_GRAMS` threshold).""")
+
+code(r"""import re
+
+def vin_search(query, tenant, role, limit=10):
+    if len(query) <= 7:
+        results = autocomplete_search(query, limit)
+        return [r["attributes"]["vin"] for r in results], "autocomplete"
+    escaped = re.escape(query)
+    results = list(db.assets.find(
+        {"assetType": "vehicle",
+         "segmentAssignments": {"$elemMatch": {"tenantId": tenant, "authorizedRolesOrTeams": role}},
+         "attributes.vin": {"$regex": escaped, "$options": "i"}},
+        {"attributes.vin": 1},
+    ).limit(limit))
+    return [r["attributes"]["vin"] for r in results], "regex_after_auth_filter"
+
+sample_assignment = next(sa for sa in sample["segmentAssignments"] if sa["tenantId"] != "rivian_oem")
+owning_tenant, owning_role = sample_assignment["tenantId"], sample_assignment["authorizedRolesOrTeams"][0]
 
 t0 = time.perf_counter()
-results = list(db.assets.aggregate([
-    {"$search": {
-        "index": "assets_vin_autocomplete_index",
-        "compound": {"must": [{"autocomplete": {"query": substring, "path": "attributes.vin"}}]},
-    }},
-    {"$limit": 10},
-    {"$project": {"attributes.vin": 1}},
-]))
-t1 = time.perf_counter()
-print(f"{len(results)} matches in {(t1 - t0) * 1000:.1f}ms:")
-for r in results:
-    print(" ", r["attributes"]["vin"])""")
+matches, method = vin_search(full_vin_query, owning_tenant, owning_role)
+ms = (time.perf_counter() - t0) * 1000
+print(f"vin_search({full_vin_query!r}, tenant={owning_tenant!r}) via {method}: {len(matches)} match(es) in {ms:.1f}ms -> {matches}")
+assert matches == [full_vin_query], "should find exactly the one vehicle, searching within its actual owning tenant" """)
 
 # ---------------------------------------------------------------------------
 md(r"""## Part M -- Segment-tree rollup counts: the "Fleet Selection" view (REQ-10)

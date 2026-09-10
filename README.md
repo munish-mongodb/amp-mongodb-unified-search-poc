@@ -218,6 +218,27 @@ C5, D3).
    so every endpoint built on it (list, facets, search, detail/update/
    delete) inherits it in one place, plus the segment-tree rollup-count
    aggregation (which has its own separate pipeline).
+5. **Atlas Search `autocomplete` only guarantees correctness for queries up
+   to its own `maxGrams` setting.** Pasting a *full* 17-character VIN into
+   the search box (rather than a short partial string) returned dozens of
+   unrelated vehicles, every one scored **identically** -- the operator
+   fragments a query longer than `maxGrams` (7 here) into its own 3-7
+   character grams internally and matches any document sharing *any* one
+   of them, not the literal full string. Every synthetic VIN in this
+   dataset also shares a literal 7-character prefix (realistic -- real
+   VINs share a manufacturer WMI code across a whole fleet too), which
+   made the false-positive rate especially bad: searching a full VIN could
+   match most of a tenant's fleet, and the actual match sometimes didn't
+   even appear in the first 500 candidates fetched by relevance.
+   Demonstrated live (notebook Part L): a 6-character substring query
+   returns 10/10 genuine matches; the same vehicle's full VIN returns 10
+   candidates with 1 genuine match. Fixed with a length-based hybrid in
+   `/vehicles/search`: `autocomplete` for queries <= `maxGrams` (fast,
+   verified correct), exact case-insensitive regex within the same
+   auth-filtered candidate set used everywhere else in this API for
+   anything longer (guaranteed correct, ~50-320ms at this data volume --
+   no search-index tuning needed since the candidate set is already
+   narrowed to one tenant by the existing operational index).
 
 ### Optimizations found by measuring, not guessing
 

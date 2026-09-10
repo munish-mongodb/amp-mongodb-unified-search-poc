@@ -22,6 +22,7 @@ Then e.g.:
 """
 import os
 import random
+import re
 import string
 import sys
 from datetime import datetime, timezone
@@ -193,33 +194,63 @@ def list_vehicles(
     return {"page": page, "pageSize": pageSize, "totalCount": total, "vehicles": vehicles}
 
 
+VIN_AUTOCOMPLETE_MAX_GRAMS = 7  # must match assets_vin_autocomplete_index's maxGrams
+
+
 @app.get("/vehicles/search")
 def search_vehicles(vin: str, tenant: str, role: str, limit: int = Query(10, ge=1, le=50)):
-    """VIN substring search via the Atlas Search autocomplete index --
-    matches the reference UI's "type any substring, get matches" behavior."""
-    results = list(db.assets.aggregate([
-        {"$search": {
-            "index": "assets_vin_autocomplete_index",
-            "compound": {
-                "must": [{"autocomplete": {"query": vin, "path": "attributes.vin"}}],
-                # `token` type fields inside embeddedDocuments need `equals`, not `text`
-                # (verified live -- `text` silently matches nothing against a token field).
-                "filter": [{"embeddedDocument": {
-                    "path": "segmentAssignments",
-                    "operator": {"compound": {"must": [
-                        {"equals": {"value": tenant, "path": "segmentAssignments.tenantId"}},
-                        {"equals": {"value": role, "path": "segmentAssignments.authorizedRolesOrTeams"}},
-                    ]}},
-                }}],
-            },
-        }},
-        {"$limit": limit},
-        {"$project": {"attributes": 1}},
-    ]))
-    # No explicit assetType filter needed here -- only vehicle docs have an
-    # attributes.vin field at all, so the autocomplete match already excludes
-    # ev_charger/e_bike docs naturally.
-    return {"vehicles": [dict(r["attributes"]) for r in results]}
+    """VIN substring search -- matches the reference UI's "type any
+    substring, get matches" behavior.
+
+    **Real bug found by testing, not review**: Atlas Search's `autocomplete`
+    operator only guarantees correctness for query strings up to its
+    `maxGrams` setting (7 here). Pasting a *full* 17-character VIN returned
+    dozens of unrelated vehicles, all scored identically -- because the
+    operator fragments a longer query into its own 3-7 character grams
+    internally and matches documents sharing *any* one of them, not the
+    literal full string. Every synthetic VIN in this dataset also happens
+    to share a literal 7-character prefix (realistic -- real VINs share a
+    manufacturer WMI code across a whole fleet too), which made this
+    especially visible: searching a full VIN matched almost the entire
+    tenant's fleet.
+
+    Fix: `autocomplete` is used only for genuinely short, typeahead-style
+    queries (<= maxGrams) where it's fast and already verified correct.
+    For anything longer, fall back to scoping by the same auth-filter
+    index used everywhere else in this API, then an exact case-insensitive
+    substring match within that already-narrowed candidate set --
+    guaranteed correct, and fast enough at this data volume (~50-120ms
+    against a ~10,000-doc tenant) without needing search-index tuning."""
+    if len(vin) <= VIN_AUTOCOMPLETE_MAX_GRAMS:
+        results = list(db.assets.aggregate([
+            {"$search": {
+                "index": "assets_vin_autocomplete_index",
+                "compound": {
+                    "must": [{"autocomplete": {"query": vin, "path": "attributes.vin"}}],
+                    # `token` type fields inside embeddedDocuments need `equals`, not `text`
+                    # (verified live -- `text` silently matches nothing against a token field).
+                    "filter": [{"embeddedDocument": {
+                        "path": "segmentAssignments",
+                        "operator": {"compound": {"must": [
+                            {"equals": {"value": tenant, "path": "segmentAssignments.tenantId"}},
+                            {"equals": {"value": role, "path": "segmentAssignments.authorizedRolesOrTeams"}},
+                        ]}},
+                    }}],
+                },
+            }},
+            {"$limit": limit},
+            {"$project": {"attributes": 1}},
+        ]))
+        return {"vehicles": [dict(r["attributes"]) for r in results], "method": "autocomplete"}
+
+    escaped = re.escape(vin)
+    results = list(
+        db.assets.find(
+            {**auth_filter(tenant, role), "attributes.vin": {"$regex": escaped, "$options": "i"}},
+            {"attributes": 1},
+        ).limit(limit)
+    )
+    return {"vehicles": [dict(r["attributes"]) for r in results], "method": "regex_after_auth_filter"}
 
 
 # Fields an authenticated caller is allowed to edit via PATCH. Deliberately
